@@ -6,6 +6,52 @@ param (
 	[Parameter(Mandatory=$True)][string]$InputPath
 )
 
+# the searchbase will be loaded from our config file
+$Global:SearchBase = ""
+# the name of our config json file
+$Global:JsonConfigFileName = 'config.json'
+
+function Get-ConfigFromJson {
+	# check if our config file exists
+	if ((Test-Path -Path $Global:JsonConfigFileName) -eq $False)
+	{
+		# if we are unable to read the file, write an error message and exit
+		Write-Host "ERROR: JSON config file '$($Global:JsonConfigFileName)' not found." -ForegroundColor Red
+		exit
+	}
+	# read our data from the json config file
+	$JsonConfigHashtable = Get-Content $Global:JsonConfigFileName | ConvertFrom-Json -AsHashtable
+
+	# check if our hashtable is null
+	if ($Null -eq $JsonConfigHashtable) {
+		# hashtable is null, exit
+		Write-Host "ERROR: No config data read from JSON file '$($Global:JsonConfigFileName)'." -ForegroundColor Red
+		exit
+	}
+	# set our variable from the config file
+	$Global:SearchBase = Test-ConfigValueNull -Hashtable $JsonConfigHashtable -Key "SearchBase"
+	Write-Host "Using SearchBase: $($Global:SearchBase)" -ForegroundColor Green
+}
+
+# check if a config value is null
+function Test-ConfigValueNull {
+	param (
+		[Parameter(Mandatory=$True)][hashtable]$Hashtable,
+		[Parameter(Mandatory=$True)][string]$Key
+	)
+	# get our value
+	$Value = $Hashtable[$Key]
+
+	# check if the value is null
+	if (($Null -eq $Value) -or ($Value -eq "")) {
+		# if the value is null, write an error message and exit
+		Write-Host "ERROR: Config '$($Key)' value is null or empty." -ForegroundColor Red
+		exit
+	}
+	# otherwise, return the value
+	$Value
+}
+
 # read computer list text file and return a unique sorted array
 function Get-UniqueArrayFromFile {
 	param (
@@ -67,9 +113,9 @@ function Write-ColorLine {
 # get an array of all our computers in AD
 function Get-AdComputerArray {
 	# the AD object we are going to search
-	$SearchBase = 'OU=Prescott (PRE),OU=VISN18,DC=v18,DC=med,DC=va,DC=gov'
+	#$SearchBase = 'OU=Prescott (PRE),OU=VISN18,DC=v18,DC=med,DC=va,DC=gov'
 	# get our AD data
-	$ADComputers = Get-ADComputer -Filter * -SearchBase $SearchBase | Select-Object Name
+	$ADComputers = Get-ADComputer -Filter * -SearchBase $Global:SearchBase | Select-Object Name
 	# create our empty array
 	$ADArray = @()
 	# create a clean array from our AD data
@@ -266,11 +312,16 @@ if ($ComputerList.Count -eq 1) {
 else {
 	$Plural = "computers"
 }
-$StartString = "`nRunning '$($PayloadFile)' on $($ComputerList.Count) $($Plural)`n"
+$StartString = "`nRunning '$($PayloadFile)' on $($ComputerList.Count) $($Plural)"
 Write-ColorLine -Text $StartString -Color Green
 
 # clear the error list so we can write only our errors
 $Error.Clear()
+
+# read our config file
+Get-ConfigFromJson
+# write an empty line
+Write-Host
 
 # count variables
 $TotalComputers = $ComputerList.Count
