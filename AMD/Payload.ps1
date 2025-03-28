@@ -48,14 +48,14 @@ function Remove-AmdFolders {
 		if ((Test-Path -Path $Path) -eq $True) {
 			Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
 			if ((Test-Path -Path $Path) -eq $True) {
-				Format-Output "-- Failed to remove folder '$($Path)'"
+				Format-Output "-- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
 				if ($Path -eq "C:\Program Files\AMD\") {
 					Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\' -Name 'DalDCELogFilePath'
 					Format-Output "-- Removed 'DalDCELogFilePath' registry value"
 				}
 			}
 			else {
-				Format-Output "-- Removed folder '$($Path)'"
+				Format-Output "-- Removed folder '$(Split-Path -Path $Path -Leaf)'"
 			}
 		}
 		Set-DisableAppsForDevices

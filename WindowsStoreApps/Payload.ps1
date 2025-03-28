@@ -12,7 +12,18 @@ function Get-PackageIsInstalled {
 	param (
 		[string]$Name
 	)
-	$Packages = Get-AppxPackage -AllUsers "$($Name)*" -ErrorAction SilentlyContinue
+	try {
+		$Packages = Get-AppxPackage -AllUsers "$($Name)*" -ErrorAction SilentlyContinue
+	}
+	catch [TypeInitializationException]{
+		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
+		$ArgArray = @(
+			"-Command",
+			"{ Get-AppxPackage -Name ""$($Name)*"" -AllUsers }"
+		)
+		Format-Output -Text "-- Get-AppxPackage failed. Running with pwsh.exe"
+		$Packages = Start-Process -FilePath $PShell -ArgumentList $ArgArray -Wait -PassThru
+	}
 	if ($Null -ne $Packages) {
 		return @($Null, $False)
 	}
@@ -61,6 +72,35 @@ function Remove-PackageFolder {
 	}
 }
 
+function Invoke-RemoveAppxPackage {
+	param (
+		[string]$PackageName,
+		[string]$UserSid,
+		[bool]$All
+	)
+	try {
+		if ($All) {			
+			Remove-AppxPackage -Package $PackageName -AllUsers -ErrorAction SilentlyContinue
+		}
+		else {
+			Remove-AppxPackage -Package $PackageName -User $UserSid -ErrorAction SilentlyContinue
+		}
+	}
+	catch [TypeInitializationException]{
+		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
+		$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -User $($UserSid) -AllUsers }"
+		if ($All -eq $False) {
+			$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -User $($UserSid) }"
+		}
+		$ArgArray = @(
+			"-Command",
+			$ArgString
+		)
+		Format-Output -Text "-- Remove-AppxPackage failed. Running with pwsh.exe"
+		Start-Process -FilePath $PShell -ArgumentList $ArgArray -Wait
+	}
+}
+
 function Remove-Package {
 	param (
 		[string]$Name,
@@ -92,10 +132,10 @@ function Remove-Package {
 			$UserSid = $Sid.UserSecurityId.Sid
 			if ($UserSid -eq 'S-1-5-18') { continue }
 			if ($All) {			
-				Remove-AppxPackage -Package $Pkg -AllUsers -ErrorAction SilentlyContinue
+				Invoke-RemoveAppxPackage -Package $Pkg -All $True
 			}
 			else {
-					Remove-AppxPackage -Package $Pkg -User $UserSid -ErrorAction SilentlyContinue
+				Invoke-RemoveAppxPackage -Package $Pkg -User $UserSid -All $False
 			}
 		}
 	}
