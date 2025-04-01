@@ -88,9 +88,9 @@ function Invoke-RemoveAppxPackage {
 	}
 	catch [TypeInitializationException]{
 		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
-		$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -User $($UserSid) -AllUsers }"
+		$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -User $($UserSid) }"
 		if ($All -eq $False) {
-			$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -User $($UserSid) }"
+			$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -AllUsers }"
 		}
 		$ArgArray = @(
 			"-Command",
