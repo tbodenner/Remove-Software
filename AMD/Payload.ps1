@@ -23,42 +23,81 @@ function Set-DisableAppsForDevices {
 }
 
 function Remove-AmdFolders {
-	$ProcArray = @(
-		"RadeonSoftware",
-		"AMDRSServ",
-		"AMDRSSrcExt"
-	)
-	foreach ($Proc in $ProcArray) {
-		if ($Null -ne (Get-Process "$($Proc)*")) {
-			try {
-				Stop-Process -Name $Proc -Force
-				Format-Output "-- Stopped process '$($Proc)'"
-			}
-			catch {
-				Format-Output "-- Failed to stop process '$($Proc)'"
-			}
-		}
-	}
-
-	$AmdPaths = @(
-		"C:\Program Files\WindowsApps\AdvancedMicroDevicesInc-2.AMDRadeonSoftware_10.22.20073.0_x64__0a9344xs7nr4m\",
-		"C:\Program Files\AMD\"
-	)
-	foreach ($Path in $AmdPaths) {
-		if ((Test-Path -Path $Path) -eq $True) {
-			Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
-			if ((Test-Path -Path $Path) -eq $True) {
-				Format-Output "-- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
-				if ($Path -eq "C:\Program Files\AMD\") {
-					Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\' -Name 'DalDCELogFilePath'
-					Format-Output "-- Removed 'DalDCELogFilePath' registry value"
+	try {
+		$ProcArray = @(
+			"RadeonSoftware",
+			"AMDRSServ",
+			"AMDRSSrcExt"
+		)
+		foreach ($Proc in $ProcArray) {
+			if ($Null -ne (Get-Process "$($Proc)*")) {
+				try {
+					Stop-Process -Name $Proc -Force
+					Format-Output "-- Stopped process '$($Proc)'"
+				}
+				catch {
+					Format-Output "-- Failed to stop process '$($Proc)'"
 				}
 			}
-			else {
-				Format-Output "-- Removed folder '$(Split-Path -Path $Path -Leaf)'"
+		}
+
+		$ServiceArray = @(
+			"AMD Crash Defender Service",
+			"AMD External Events Utility"
+		)
+
+		foreach ($Serv in $ServiceArray) {
+			if ($Null -ne (Get-Service $Serv -ErrorAction SilentlyContinue)) {
+				try {
+					Stop-Service -Name $Serv
+					Format-Output "-- Stopped service '$($Serv)'"
+					sc.exe delete $Serv | Out-Null
+					Format-Output "-- Removed service '$($Serv)'"
+				}
+				catch {
+					Format-Output "-- Failed to stop or remove service '$($Serv)'"
+				}
 			}
 		}
-		Set-DisableAppsForDevices
+
+		$AmdPaths = @(
+			"C:\Program Files\AMD\",
+			"C:\ProgramData\AMD\"
+		)
+		$AmdPaths += Resolve-Path -Path "C:\Program Files\WindowsApps\AdvancedMicroDevicesInc*"
+		$MaxPathLen = 50
+		foreach ($Path in $AmdPaths) {
+			if ((Test-Path -Path $Path) -eq $True) {
+				Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+				if ((Test-Path -Path $Path) -eq $True) {
+					if ($Path.Length -gt $MaxPathLen) {
+						Format-Output "-- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
+					}
+					else {
+						Format-Output "-- Failed to remove folder '$($Path)'"
+					}
+					if ($Path -eq "C:\Program Files\AMD\") {
+						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
+						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0002\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
+						Format-Output "-- Removed 'DalDCELogFilePath' registry value"
+					}
+				}
+				else {
+					if ($Path.Length -gt $MaxPathLen) {
+						Format-Output "-- Removed folder '$(Split-Path -Path $Path -Leaf)'"
+					}
+					else {
+						Format-Output "-- Removed folder '$($Path)'"
+					}
+				}
+			}
+			Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AMD Catalyst Install Manager' -ErrorAction SilentlyContinue
+			Set-DisableAppsForDevices
+		}
+		return @(0, 1)
+	}
+	catch {
+		return @(0, 0)
 	}
 }
 
@@ -69,7 +108,11 @@ try {
 	Format-Output "Connected"
 	
 	Format-Output "Removing AMD Radeon Software Folders"
-	Remove-AmdFolders
+	$Result = Remove-AmdFolders
+	if ($Null -ne $Result) {
+		$SkipCount += $Result[0]
+		$UninstallCount += $Result[1]
+	}
 
 	Format-Output "Running Hardware Inventory Cycle"
 	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
@@ -81,4 +124,5 @@ try {
 catch {
 	Format-Output "-- Error caught in script. Check error file."
 	Write-Error $_
+	return @(0, 0)
 }

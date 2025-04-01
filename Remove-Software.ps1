@@ -195,7 +195,7 @@ function Find-Computer {
 	if ($Null -ne $Ip) {
 		# get our dns data
 		try {
-			$DnsData = Resolve-DnsName -Name $Ip
+			$DnsData = Resolve-DnsName -Name $Ip -ErrorAction Stop
 		}
 		# catch the dns error
 		catch [System.ComponentModel.Win32Exception] {
@@ -205,6 +205,7 @@ function Find-Computer {
 			if ($ECode -eq 9003) {
 				return @(0, 'DnsNotFound')
 			}
+			return @(0, 'UnknownDnsError')
 		}
 		# catch all other errors
 		catch {
