@@ -1,49 +1,66 @@
 #Requires -RunAsAdministrator
 
 $ComputerName = $env:computername
+$SkipCount = 0
+$UninstallCount = 0
 
 function Format-Output {
 	param ([string]$Text)
-	$Output = "[--|{0}| {1}" -f $ComputerName, $Text
+	$Output = "[--|$($ComputerName)| $($Text)"
 	Write-Host $Output
 }
 
 try {
 	$ProductName = "Xerox Desktop Print Experience"
 	$UninstallVersionList = @("7.*")
-	
+
 	Format-Output "Connected"
 
 	foreach ($UninstallCurrentVersion in $UninstallVersionList) {
 		Format-Output "Getting Identifying Number and Version"
-		$Object = (Get-WmiObject -Class Win32_Product | Where-Object {$_.Name -match $ProductName -and $_.Version -like $UninstallCurrentVersion})
-		$INum = $Object.IdentifyingNumber
-		[string]$Version = $Object.Version
-		Format-Output ("--INum: {0}" -f $INum)
-		Format-Output ("--Version: {0}" -f $Version)
+		$X64 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+		$X32 = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+		$Software = Get-ItemProperty -Path $X64, $X32
+		$INum = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).PSChildName
+		$Version = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).DisplayVersion
+		Format-Output "--INum: $($INum)"
+		Format-Output "--Version: '$($Version)'"
 
 		if ($Version -like $UninstallCurrentVersion) {
 			if ($INum -ne "") {
-				Format-Output ("Uninstalling '{0}'" -f $Version)
-				$cmd = "msiexec.exe /x {0} /quiet /norestart" -f $INum
+				Format-Output "Uninstalling '$($Version)'"
+				$cmd = "msiexec.exe /x $($INum) /quiet /norestart"
+				#Write-Host $cmd
 				cmd /c $cmd
 			}
 
 			Format-Output "Checking Installed Version"
-			$Version = (Get-WmiObject -Class Win32_Product | Where-Object {$_.Name -match $ProductName -and $_.Version -like $UninstallCurrentVersion}).Version
-			
+			$Software = Get-ItemProperty -Path $X64, $X32
+			$Version = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).DisplayVersion
+			if ($Null -ne $Version) {
+				$Version = $Version.Trim()
+			}
+			else {
+				$Version = ""
+			}
+			Format-Output "--Version: '$($Version)'"
 			if ($Version -ne "") {
-				$ErrString = "{0}: Failed To Uninstall '{1} v{2}'" -f $ComputerName, $ProductName, $UninstallCurrentVersion
+				$ErrString = "$($ComputerName): Failed To Uninstall '$($ProductName) v$($UninstallCurrentVersion)'"
 				Format-Output $ErrString
 				Write-Error $ErrString
 			}
 			else {
-				Format-Output  ("--Version '{0}' Removed" -f $UninstallCurrentVersion)
+				# software was removed
+				Format-Output  "--Version '$($UninstallCurrentVersion)' Removed"
+				# update our count
+				$UninstallCount += 1
 			}
 		}
 		else {
 			# nothing to do, correct version found
-			Format-Output ("Skipping {0}, nothing to uninstall" -f $UninstallCurrentVersion)
+			Format-Output "Skipping $($UninstallCurrentVersion), nothing to uninstall"
+			# update our count
+			$SkipCount += 1
 		}
 	}
 
@@ -57,3 +74,6 @@ catch {
 	Format-Output $_
 	Write-Error $_
 }
+
+# return an array of our counts
+return @($SkipCount, $UninstallCount)

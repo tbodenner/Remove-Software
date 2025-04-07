@@ -17,12 +17,9 @@ function Get-PackageIsInstalled {
 	}
 	catch [TypeInitializationException]{
 		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
-		$ArgArray = @(
-			"-Command",
-			"{ Get-AppxPackage -Name ""$($Name)*"" -AllUsers }"
-		)
+		$PShellArgs = "Get-AppxPackage -Name $($Name)* -AllUsers"
 		Format-Output -Text "-- Get-AppxPackage failed. Running with pwsh.exe"
-		$Packages = Start-Process -FilePath $PShell -ArgumentList $ArgArray -Wait -PassThru
+		$Packages = & $PShell -Command { $PShellArgs }
 	}
 	if ($Null -ne $Packages) {
 		return @($Null, $False)
@@ -88,16 +85,12 @@ function Invoke-RemoveAppxPackage {
 	}
 	catch [TypeInitializationException]{
 		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
-		$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -User $($UserSid) }"
+		$PShellArgs = "Remove-AppxPackage -Package $($PackageName) -User $UserSid"
 		if ($All -eq $False) {
-			$ArgString = "{ Remove-AppxPackage -Package $($PackageName) -AllUsers }"
+			$PShellArgs = "Remove-AppxPackage -Package $($PackageName) -AllUsers"
 		}
-		$ArgArray = @(
-			"-Command",
-			$ArgString
-		)
 		Format-Output -Text "-- Remove-AppxPackage failed. Running with pwsh.exe"
-		Start-Process -FilePath $PShell -ArgumentList $ArgArray -Wait
+		& $PShell -Command { $PShellArgs }
 	}
 }
 
