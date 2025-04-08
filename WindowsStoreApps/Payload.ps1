@@ -18,10 +18,11 @@ function Get-PackageIsInstalled {
 	catch [TypeInitializationException]{
 		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
 		$PShellArgs = "Get-AppxPackage -Name $($Name)* -AllUsers"
-		Format-Output -Text "-- Get-AppxPackage failed. Running with pwsh.exe"
+		#Format-Output -Text "-- Get-AppxPackage failed. Running with pwsh.exe"
 		$Packages = & $PShell -Command { $PShellArgs }
 	}
 	if ($Null -ne $Packages) {
+		# return @(packages, isinstalled)
 		return @($Null, $False)
 	}
 	foreach ($Pkg in $Packages) {
@@ -29,12 +30,15 @@ function Get-PackageIsInstalled {
 			if ($Pkg.PackageUserInformation.Count -gt 0) {
 				if ($Pkg.PackageUserInformation.Count -eq 1) {
 					if ($Pkg.PackageUserInformation[0].Sid -eq 'S-1-5-18') {
+						# return @(packages, isinstalled)
 						return @($Null, $False)
 					}
 					else {
+						# return @(packages, isinstalled)
 						return @($Packages, $True)
 					}
 				}
+				# return @(packages, isinstalled)
 				return @($Packages, $True)
 			}
 		}
@@ -46,7 +50,10 @@ function Remove-AllFolders {
 		[string]$Name
 	)
 	$AppPath = "C:\Program Files\WindowsApps\$($Name)*"
-	Remove-PackageFolder -FolderName $AppPath
+	$Paths = Resolve-Path -Path $AppPath
+	foreach ($Path in $Paths) {
+		Remove-PackageFolder -FolderName $Path
+	}
 
 	if ($Name -eq 'WavesAudio') {
 		$DellPath = 'C:\ProgramData\Dell\'
@@ -64,9 +71,9 @@ function Remove-PackageFolder {
 		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 		Format-Output '-- Removed App Folder'
 	}
-	else {
-		Format-Output '-- App folder not found'
-	}
+	#else {
+	#	Format-Output '-- App folder not found'
+	#}
 }
 
 function Invoke-RemoveAppxPackage {
@@ -89,7 +96,7 @@ function Invoke-RemoveAppxPackage {
 		if ($All -eq $False) {
 			$PShellArgs = "Remove-AppxPackage -Package $($PackageName) -AllUsers"
 		}
-		Format-Output -Text "-- Remove-AppxPackage failed. Running with pwsh.exe"
+		#Format-Output -Text "-- Remove-AppxPackage failed. Running with pwsh.exe"
 		& $PShell -Command { $PShellArgs }
 	}
 }
@@ -98,26 +105,26 @@ function Remove-Package {
 	param (
 		[string]$Name,
 		[bool]$All = $True,
-		[string]$Service = ""
+		[string[]]$Services = @(),
+		$PackageResult
 	)
-	if ($Service -ne "")
-	{
+	foreach ($Service in $Services) {
 		Stop-Service $Service -ErrorAction SilentlyContinue
 	}
 
-	$PackageResult = Get-PackageIsInstalled -Name $Name
+	#$PackageResult = Get-PackageIsInstalled -Name $Name
 	if ($Null -eq $PackageResult) {
 		Format-Output '-- Skipped (Not found)'
 		Remove-AllFolders -Name $Name
-		return @(1, 0)
+		return @(0, 0)
 	}
 	$Packages = $PackageResult[0]
 	$IsInstalled = $PackageResult[1]
 
-	if (($Null -eq $Packages) -or ($IsInstalled -eq $False)) {
+	if (($Null -eq $Packages) -and ($IsInstalled -eq $False)) {
 		Format-Output '-- Skipped (System User)'
 		Remove-AllFolders -Name $Name
-		return @(1, 0)
+		return @(0, 0)
 	}
 
 	foreach ($Pkg in $Packages) {
@@ -125,10 +132,12 @@ function Remove-Package {
 			$UserSid = $Sid.UserSecurityId.Sid
 			if ($UserSid -eq 'S-1-5-18') { continue }
 			if ($All) {			
-				Invoke-RemoveAppxPackage -Package $Pkg -All $True
+				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
+				Format-Output "-- Removed '$($Name)'"
 			}
 			else {
-				Invoke-RemoveAppxPackage -Package $Pkg -User $UserSid -All $False
+				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
+				Format-Output "-- Removed '$($Name)' (User)"
 			}
 		}
 	}
@@ -143,7 +152,7 @@ function Remove-Package {
 	$Packages = $PackageResult[0]
 	$IsInstalled = $PackageResult[1]
 
-	if (($Null -eq $Packages) -or ($IsInstalled -eq $False)) {
+	if (($Null -eq $Packages) -and ($IsInstalled -eq $False)) {
 		Format-Output '-- Uninstalled (System User)'
 		return @(0, 1)
 	}
@@ -188,38 +197,43 @@ function Set-DisableAppsForDevices {
 	Add-RegistryKey -Path $RegPath -KeyName $RegKeyName -Value $RegKeyValue -KeyType DWord
 }
 
+class WindowsApp {
+	[string]$Message
+	[string]$PackageName
+	[bool]$AllUsers
+	[string[]]$Services
+
+	WindowsApp([string]$Message, [string]$PackageName, [bool]$AllUsers, [string[]]$Services) {
+		$this.Message = $Message
+		$this.PackageName = $PackageName
+		$this.AllUsers = $AllUsers
+		$this.Services = $Services
+	}
+}
+
 try {
 	$SkipCount = 0
 	$UninstallCount = 0
 
+	$WindowsAppsToRemove = @()
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling AMD Radeon Software", "AdvancedMicroDevicesInc-2.AMDRadeonSoftware", $True, @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling DuckDuckGo", "DuckDuckGo", $True, @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio (Each User)", "WavesAudio", $False, @('Waves Audio Services'))
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio (All Users)", "WavesAudio", $True, @('Waves Audio Services'))
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Bing Wallpaper", "Microsoft.BingWallpaper", $False, @())
+
 	Format-Output "Connected"
-	
-	Format-Output "Uninstalling AMD Radeon Software"
-	$Result = Remove-Package -Name "AdvancedMicroDevicesInc-2.AMDRadeonSoftware"
-	if ($Null -ne $Result) {
-		$SkipCount += $Result[0]
-		$UninstallCount += $Result[1]
-	}
-
-	Format-Output "Uninstalling DuckDuckGo"
-	$Result = Remove-Package -Name "DuckDuckGo"
-	if ($Null -ne $Result) {
-		$SkipCount += $Result[0]
-		$UninstallCount += $Result[1]
-	}
-
-	Format-Output "Uninstalling Waves Audio (Each User)"
-	$Result = Remove-Package -Name "WavesAudio" -All $False -Service 'Waves Audio Services'
-	if ($Null -ne $Result) {
-		$SkipCount += $Result[0]
-		$UninstallCount += $Result[1]
-	}
-
-	Format-Output "Uninstalling Waves Audio (All Users)"
-	$Result = Remove-Package -Name "WavesAudio" -Service 'Waves Audio Services'
-	if ($Null -ne $Result) {
-		$SkipCount += $Result[0]
-		$UninstallCount += $Result[1]
+	foreach ($WindowsApp in $WindowsAppsToRemove) {
+		$WindowsAppData = [WindowsApp]$WindowsApp
+		$PackageResult = Get-PackageIsInstalled -Name $WindowsAppData.PackageName
+		if ($Null -ne $PackageResult) {
+			Format-Output $WindowsAppData.Message
+			$Result = Remove-Package -Name $WindowsAppData.PackageName -All $WindowsAppData.AllUsers -Services $WindowsAppData.Services -PackageResult $PackageResult
+			if ($Null -ne $Result) {
+				$SkipCount += $Result[0]
+				$UninstallCount += $Result[1]
+			}
+		}
 	}
 
 	Set-DisableAppsForDevices
