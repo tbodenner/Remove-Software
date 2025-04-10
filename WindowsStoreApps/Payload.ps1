@@ -249,6 +249,6 @@ try {
 }
 catch {
 	Format-Output "-- Error caught in script. Check error file."
-	Write-Error -Text "$($ComputerName): $($_)"
+	Write-Error -Message "$($ComputerName): $($_)"
 	Write-Host
 }
