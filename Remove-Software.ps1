@@ -3,7 +3,9 @@
 # parameters
 param (
 	# the folder that contains the payload and computer list
-	[Parameter(Mandatory=$True)][string]$InputPath
+	[Parameter(Mandatory=$True)][string]$InputPath,
+	# if enabled, remote sessions will be started with powershell v7
+	[switch]$PowerShell7
 )
 
 # the searchbase will be loaded from our config file
@@ -194,33 +196,16 @@ function Find-Computer {
 	# check if we got an ip
 	if ($Null -ne $Ip) {
 		# get our dns data
-		try {
-			$DnsData = Resolve-DnsName -Name $Ip -ErrorAction Stop
-		}
-		# catch the dns error
-		catch [System.ComponentModel.Win32Exception] {
-			# get our error code
-			$ECode = $_.Exception.NativeErrorCode
-			# return our error
-			if ($ECode -eq 9003) {
-				return @(0, 'DnsNotFound')
-			}
-			return @(0, 'UnknownDnsError')
-		}
-		# catch all other errors
-		catch {
-			# write out the exception
-			Write-Host ($_.Exception | Select-Object -Property *)
-		}
+		$DnsData = Resolve-DnsName -Name $Ip -ErrorAction Ignore
 		# check if we got any data
 		if ($Null -eq $DnsData) {
-			return @($Latency, 'GenericDnsError')
+			return @(0, 'DnsNotFound')
 		}
 		# get our host name from the data
 		$NameHost = $DnsData.NameHost
 		# check if we got a hostname
 		if ($Null -eq $NameHost) {
-			return @($Latency, 'NoHostName')
+			return @(0, 'NoHostName')
 		}
 		# split the host name and return it
 		$DnsName = $NameHost.Split('.')
@@ -243,7 +228,7 @@ function Find-Computer {
 }
 
 # stop on errors
-$ErrorActionPreference = "Stop"
+#$ErrorActionPreference = "Stop"
 
 # if our status is empty, use this status
 $NoStatus = 'NoStatus'
@@ -374,7 +359,12 @@ foreach ($Computer in $ComputerList) {
 			if ($PingStatus -ne $DnsMismatch) {
 				Write-ColorLine -Text (Format-Line -Text "Ping ($($PingStatus))" -Computer $Computer) -Color Green
 				# run the script on the target computer if we can ping the computer
-				$InvokeReturn = Invoke-Command @Parameters
+				if ($PowerShell7 -eq $True) {
+					$InvokeReturn = Invoke-Command @Parameters -ConfigurationName 'PowerShell.7'
+				}
+				else {
+					$InvokeReturn = Invoke-Command @Parameters
+				}
 				# check if we got anything back from the invoke command
 				if ($Null -ne $InvokeReturn) {
 					# should be @($SkipCount, $UninstallCount)
@@ -392,13 +382,13 @@ foreach ($Computer in $ComputerList) {
 			}
 			else {
 				# otherwise, write an error
-				Write-Error -Message "DNS mismatch error" -Category ConnectionError -ErrorAction SilentlyContinue
+				Write-Error -Message "$($Computer): DNS mismatch error" -Category ConnectionError -ErrorAction SilentlyContinue
 			}
 		}
 		else {
 			Write-ColorLine -Text (Format-Line -Text "Ping ($($PingStatus))" -Computer $Computer) -Color Red
 			# otherwise, write an error
-			Write-Error -Message "Unable to ping $($Computer) - ($($PingStatus), $($PingLatency))" -Category ConnectionError -ErrorAction SilentlyContinue
+			Write-Error -Message "$($Computer): Unable to ping $($Computer) - ($($PingStatus), $($PingLatency))" -Category ConnectionError -ErrorAction SilentlyContinue
 		}
 		# check if our computer is in AD before adding to either array
 		if ($PingStatus -ne $NotInAd) {

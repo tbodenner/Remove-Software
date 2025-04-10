@@ -12,37 +12,26 @@ function Get-PackageIsInstalled {
 	param (
 		[string]$Name
 	)
+	$Packages = $Null
+	$ReturnArray = $Null
 	try {
 		$Packages = Get-AppxPackage -AllUsers "$($Name)*" -ErrorAction SilentlyContinue
 	}
 	catch [TypeInitializationException]{
-		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
-		$PShellArgs = "Get-AppxPackage -Name $($Name)* -AllUsers"
-		#Format-Output -Text "-- Get-AppxPackage failed. Running with pwsh.exe"
-		$Packages = & $PShell -Command { $PShellArgs }
-	}
-	if ($Null -ne $Packages) {
+		Format-Output -Text "-- Get-AppxPackage failed. Use remote PowerShell v7+"
 		# return @(packages, isinstalled)
-		return @($Null, $False)
+		$ReturnArray = @($Null, $True)
 	}
-	foreach ($Pkg in $Packages) {
-		if ($Null -ne $Pkg) {
-			if ($Pkg.PackageUserInformation.Count -gt 0) {
-				if ($Pkg.PackageUserInformation.Count -eq 1) {
-					if ($Pkg.PackageUserInformation[0].Sid -eq 'S-1-5-18') {
-						# return @(packages, isinstalled)
-						return @($Null, $False)
-					}
-					else {
-						# return @(packages, isinstalled)
-						return @($Packages, $True)
-					}
-				}
-				# return @(packages, isinstalled)
-				return @($Packages, $True)
-			}
-		}
+	if ($Null -eq $Packages) {
+		# return @(packages, isinstalled)
+		$ReturnArray = @($Null, $False)
 	}
+	else {
+		# return @(packages, isinstalled)
+		$ReturnArray = @($Packages, $True)
+	}
+	# return our results
+	$ReturnArray
 }
 
 function Remove-AllFolders {
@@ -71,9 +60,6 @@ function Remove-PackageFolder {
 		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 		Format-Output '-- Removed App Folder'
 	}
-	#else {
-	#	Format-Output '-- App folder not found'
-	#}
 }
 
 function Invoke-RemoveAppxPackage {
@@ -91,13 +77,7 @@ function Invoke-RemoveAppxPackage {
 		}
 	}
 	catch [TypeInitializationException]{
-		$PShell = 'C:\Program Files\PowerShell\7\pwsh.exe'
-		$PShellArgs = "Remove-AppxPackage -Package $($PackageName) -User $UserSid"
-		if ($All -eq $False) {
-			$PShellArgs = "Remove-AppxPackage -Package $($PackageName) -AllUsers"
-		}
-		#Format-Output -Text "-- Remove-AppxPackage failed. Running with pwsh.exe"
-		& $PShell -Command { $PShellArgs }
+		Format-Output -Text "-- Remove-AppxPackage failed. Use remote PowerShell v7+"
 	}
 }
 
@@ -112,48 +92,64 @@ function Remove-Package {
 		Stop-Service $Service -ErrorAction SilentlyContinue
 	}
 
-	#$PackageResult = Get-PackageIsInstalled -Name $Name
 	if ($Null -eq $PackageResult) {
-		Format-Output '-- Skipped (Not found)'
+		Format-Output '-- Not Found'
 		Remove-AllFolders -Name $Name
 		return @(0, 0)
 	}
+	Format-Output "-- PackageResult '$($PackageResult)'"
 	$Packages = $PackageResult[0]
 	$IsInstalled = $PackageResult[1]
-
 	if (($Null -eq $Packages) -and ($IsInstalled -eq $False)) {
-		Format-Output '-- Skipped (System User)'
+		Format-Output '-- Found System User'
 		Remove-AllFolders -Name $Name
 		return @(0, 0)
 	}
+
+	# change this boolean if something was removed
+	$UninstallAttempted = $False
 
 	foreach ($Pkg in $Packages) {
 		foreach ($Sid in $Pkg.PackageUserInformation) {
 			$UserSid = $Sid.UserSecurityId.Sid
 			if ($UserSid -eq 'S-1-5-18') { continue }
-			if ($All) {			
+			if ($Pkg.PackageFullName -eq '') { continue }
+			if ($All -eq $True) {			
+				Format-Output "-- Removing '$($Pkg.PackageFullName)'"
 				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
 				Format-Output "-- Removed '$($Name)'"
 			}
 			else {
+				if ($UserSid -eq '') { continue }
+				Format-Output "-- Removing '$($Pkg.PackageFullName)'"
 				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
-				Format-Output "-- Removed '$($Name)' (User)"
+				Format-Output "-- Removed '$($Name)'"
+				Format-Output "---- User '$($UserSid)'"
 			}
+			$UninstallAttempted = $True
 		}
 	}
 
 	Remove-AllFolders -Name $Name
 
 	$PackageResult = Get-PackageIsInstalled -Name $Name
-	if ($Null -eq $PackageResult) {
-		Format-Output '-- Uninstalled (Not Found)'
-		return @(0, 1)
-	}
 	$Packages = $PackageResult[0]
 	$IsInstalled = $PackageResult[1]
-
-	if (($Null -eq $Packages) -and ($IsInstalled -eq $False)) {
-		Format-Output '-- Uninstalled (System User)'
+	Format-Output "-- END PackageResult '$($PackageResult)'"
+	if (($Null -eq $PackageResult) -and ($UninstallAttempted -eq $True)) {
+		Format-Output "-- Uninstalled '$($Name)'"
+		return @(0, 1)
+	}
+	if (($Null -eq $PackageResult) -and ($UninstallAttempted -eq $False)) {
+		Format-Output "-- '$($Name)' Not Found"
+		return @(0, 1)
+	}
+	if (($Null -ne $Packages) -and ($IsInstalled -eq $False)) {
+		Format-Output "-- Package NULL, IsInstalled False"
+		return @(0, 1)
+	}
+	if (($UninstallAttempted -eq $True) -and ($IsInstalled -eq $True)) {
+		Format-Output "-- Removed True, IsInstalled True"
 		return @(0, 1)
 	}
 
@@ -227,25 +223,32 @@ try {
 		$WindowsAppData = [WindowsApp]$WindowsApp
 		$PackageResult = Get-PackageIsInstalled -Name $WindowsAppData.PackageName
 		if ($Null -ne $PackageResult) {
-			Format-Output $WindowsAppData.Message
-			$Result = Remove-Package -Name $WindowsAppData.PackageName -All $WindowsAppData.AllUsers -Services $WindowsAppData.Services -PackageResult $PackageResult
-			if ($Null -ne $Result) {
-				$SkipCount += $Result[0]
-				$UninstallCount += $Result[1]
+			$Packages = $PackageResult[0]
+			$IsInstalled = $PackageResult[1]
+			if ($IsInstalled -eq $True) {
+				Format-Output $WindowsAppData.Message
+				$Result = Remove-Package -Name $WindowsAppData.PackageName -All $WindowsAppData.AllUsers -Services $WindowsAppData.Services -PackageResult $PackageResult
+				if ($Null -ne $Result) {
+					$SkipCount += $Result[0]
+					$UninstallCount += $Result[1]
+				}
 			}
+		}
+		else {
+			Format-Output "-- PackageResult is NULL"
 		}
 	}
 
 	Set-DisableAppsForDevices
 
-	Format-Output "Running Hardware Inventory Cycle"
-	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
-
+	#Format-Output "Running Hardware Inventory Cycle"
+	#Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
+	
 	Format-Output "Done`n"
-
-	return @($SkipCount, $UninstallCount)
+	@($SkipCount, $UninstallCount)
 }
 catch {
 	Format-Output "-- Error caught in script. Check error file."
-	Write-Error $_
+	Write-Error -Text "$($ComputerName): $($_)"
+	Write-Host
 }
