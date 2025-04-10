@@ -163,17 +163,10 @@ function Find-Computer {
 		return @(0, $NotInAD)
 	}
 	# ping the computer and save the details
-	try {
-		$ComputerDetails = Test-Connection -TargetName $ComputerName -Count 1 -TimeoutSeconds 3
-	}
-	# catch the ping exception
-	catch [System.Net.NetworkInformation.PingException] {
+	$ComputerDetails = Test-Connection -TargetName $ComputerName -Count 1 -TimeoutSeconds 3 -ErrorAction Ignore
+	# check if the computer was found
+	if ($Null -eq $ComputerDetails) {
 		return @(0, $NotFound)
-	}
-	# catch all other errors
-	catch {
-		# write out the exception
-		Write-Host ($_.Exception | Select-Object -Property *)
 	}
 	# get the pinged computer's ip
 	$Ip = $ComputerDetails.Address
