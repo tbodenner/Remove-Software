@@ -97,7 +97,6 @@ function Remove-Package {
 		Remove-AllFolders -Name $Name
 		return @(0, 0)
 	}
-	Format-Output "-- PackageResult '$($PackageResult)'"
 	$Packages = $PackageResult[0]
 	$IsInstalled = $PackageResult[1]
 	if (($Null -eq $Packages) -and ($IsInstalled -eq $False)) {
@@ -111,8 +110,16 @@ function Remove-Package {
 
 	foreach ($Pkg in $Packages) {
 		foreach ($Sid in $Pkg.PackageUserInformation) {
+			$InstallState = $Pkg.PackageUserInformation.InstallState
+			# pending removal, skip it
+			if ($InstallState -eq 'Installed(pending removal)') {
+				Format-Output "-- Pending Removal '$($Pkg.PackageFullName)'"
+				continue
+			}
 			$UserSid = $Sid.UserSecurityId.Sid
+			# system user, skip it
 			if ($UserSid -eq 'S-1-5-18') { continue }
+			# no package name, skip it
 			if ($Pkg.PackageFullName -eq '') { continue }
 			if ($All -eq $True) {			
 				Format-Output "-- Removing '$($Pkg.PackageFullName)'"
@@ -135,7 +142,6 @@ function Remove-Package {
 	$PackageResult = Get-PackageIsInstalled -Name $Name
 	$Packages = $PackageResult[0]
 	$IsInstalled = $PackageResult[1]
-	Format-Output "-- END PackageResult '$($PackageResult)'"
 	if (($Null -eq $PackageResult) -and ($UninstallAttempted -eq $True)) {
 		Format-Output "-- Uninstalled '$($Name)'"
 		return @(0, 1)
@@ -145,16 +151,13 @@ function Remove-Package {
 		return @(0, 1)
 	}
 	if (($Null -ne $Packages) -and ($IsInstalled -eq $False)) {
-		Format-Output "-- Package NULL, IsInstalled False"
+		Format-Output "-- '$($Name)' Not Installed"
 		return @(0, 1)
 	}
 	if (($UninstallAttempted -eq $True) -and ($IsInstalled -eq $True)) {
-		Format-Output "-- Removed True, IsInstalled True"
+		Format-Output "-- Pending Removal '$($Name)'"
 		return @(0, 1)
 	}
-
-	Format-Output "-- Error"
-	return @(0, 0)
 }
 
 # add or update a value in the registry
