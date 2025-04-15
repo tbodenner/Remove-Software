@@ -299,8 +299,6 @@ $Error.Clear()
 
 # read our config file
 Get-ConfigFromJson
-# write an empty line
-Write-Host
 
 # count variables
 $TotalComputers = $ComputerList.Count
@@ -332,6 +330,8 @@ foreach ($Computer in $ComputerList) {
 		$Status = "$ComputerCount/$TotalComputers Complete"
 		$Activity = Format-Line -Text "Progress   "
 		Write-Progress -Activity $Activity -Status $Status -PercentComplete $PComplete
+		# insert empty line
+		Write-Host
 		Write-ColorLine -Text (Format-Line -Text "Trying To Connect" -Computer $Computer) -Color Yellow
 		# set our parameters for our invoke command
 		$Parameters = @{
@@ -372,6 +372,12 @@ foreach ($Computer in $ComputerList) {
 						$UninstallCount += $InvokeReturn[1]
 					}
 				}
+				else {
+					# we got a null value from our invoke-command, add the computer to the error array
+					$ErrorArray += $Computer
+					# write the error message
+					Write-ColorLine -Text (Format-Line -Text "Invoke-Command returned NULL" -Computer $Computer) -Color Red
+				}
 			}
 			else {
 				# otherwise, write an error
@@ -391,7 +397,7 @@ foreach ($Computer in $ComputerList) {
 				$SuccessArray += $Computer
 			}
 			else {
-				Write-ColorLine -Text "Error: $($Computer)`n" -Color Yellow
+				Write-ColorLine -Text "Error: $($Computer)" -Color Yellow
 				# if the script added an error, add the computer to our success array
 				$ErrorArray += $Computer
 			}
@@ -405,7 +411,7 @@ foreach ($Computer in $ComputerList) {
 	}
 	catch {
 		Write-Output "Caught Error"
-		Write-Output "$($_)`n"
+		Write-Output "$($_)"
 		Write-Host ($_ | Select-Object -Property *)
 		# add the computer to our error array if an error was caught
 		$ErrorArray += $Computer
@@ -414,7 +420,7 @@ foreach ($Computer in $ComputerList) {
 
 # create our counts array to output to the console and a file
 $CountsArray = @(
-	'Results:'
+	"`nResults:"
 	"    Total: $($TotalComputers)"
 	"  Success: $($SuccessArray.Count)"
 	"     Skip: $($SkipCount)"

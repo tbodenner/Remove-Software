@@ -18,17 +18,19 @@ function Get-PackageIsInstalled {
 		$Packages = Get-AppxPackage -AllUsers "$($Name)*" -ErrorAction SilentlyContinue
 	}
 	catch [TypeInitializationException]{
-		Format-Output -Text "-- Get-AppxPackage failed. Use remote PowerShell v7+"
+		Format-Output -Text "-- Get-AppxPackage failed. Try remote PowerShell v7+"
 		# return @(packages, isinstalled)
-		$ReturnArray = @($Null, $True)
+		$ReturnArray = 'AppxError'
 	}
-	if ($Null -eq $Packages) {
-		# return @(packages, isinstalled)
-		$ReturnArray = @($Null, $False)
-	}
-	else {
-		# return @(packages, isinstalled)
-		$ReturnArray = @($Packages, $True)
+	if ($ReturnArray -ne 'AppxError') {
+		if ($Null -eq $Packages) {
+			# return @(packages, isinstalled)
+			$ReturnArray = @($Null, $False)
+		}
+		else {
+			# return @(packages, isinstalled)
+			$ReturnArray = @($Packages, $True)
+		}
 	}
 	# return our results
 	$ReturnArray
@@ -77,7 +79,7 @@ function Invoke-RemoveAppxPackage {
 		}
 	}
 	catch [TypeInitializationException]{
-		Format-Output -Text "-- Remove-AppxPackage failed. Use remote PowerShell v7+"
+		Format-Output -Text "-- Remove-AppxPackage failed. Try remote PowerShell v7+"
 	}
 }
 
@@ -225,6 +227,9 @@ try {
 	foreach ($WindowsApp in $WindowsAppsToRemove) {
 		$WindowsAppData = [WindowsApp]$WindowsApp
 		$PackageResult = Get-PackageIsInstalled -Name $WindowsAppData.PackageName
+		if ($PackageResult -eq 'AppxError') {
+			return $Null
+		}
 		if ($Null -ne $PackageResult) {
 			$Packages = $PackageResult[0]
 			$IsInstalled = $PackageResult[1]
@@ -244,10 +249,15 @@ try {
 
 	Set-DisableAppsForDevices
 
-	#Format-Output "Running Hardware Inventory Cycle"
-	#Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
+	if ($PSVersionTable.PSVersion.Major -lt 7) {
+		Format-Output "Running Hardware Inventory Cycle"
+		Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
+	}
+	else {
+		Format-Output "Skipped Hardware Inventory Cycle due to PowerShell7"
+	}
 	
-	Format-Output "Done`n"
+	Format-Output "Done"
 	@($SkipCount, $UninstallCount)
 }
 catch {

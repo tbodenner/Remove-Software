@@ -117,7 +117,7 @@ try {
 	Format-Output "Running Hardware Inventory Cycle"
 	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
 
-	Format-Output "Done`n"
+	Format-Output "Done"
 
 	return @($SkipCount, $UninstallCount)
 }
