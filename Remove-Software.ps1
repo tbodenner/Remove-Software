@@ -80,7 +80,7 @@ function Get-UniqueArrayFromFile {
 function Format-Line {
 	# parameters
 	param (
-	[Parameter(Mandatory=$True)][string][string]$Text,
+	[Parameter(Mandatory=$True)][string]$Text,
 	[string]$Computer
 	)
 	# check if we were given a computer name
@@ -160,13 +160,13 @@ function Find-Computer {
 	)
 	# check if the computer is in AD
 	if ((Test-ComputerInAd -ADArray $ADArray -ComputerName $ComputerName) -eq $False) {
-		return @(0, $NotInAD)
+		return @(-1, $NotInAD)
 	}
 	# ping the computer and save the details
 	$ComputerDetails = Test-Connection -TargetName $ComputerName -Count 1 -TimeoutSeconds 3 -ErrorAction Ignore
 	# check if the computer was found
 	if ($Null -eq $ComputerDetails) {
-		return @(0, $NotFound)
+		return @(-1, $NotFound)
 	}
 	# get the pinged computer's ip
 	$Ip = $ComputerDetails.Address
@@ -180,7 +180,7 @@ function Find-Computer {
 		$Status = $NoStatus
 	}
 	# check if the ping timed out
-	if (($Latency -eq 0) -or ($Status -eq $NoStatus)) {
+	if (($Latency -lt 0) -or ($Status -eq $NoStatus) -or ($Status -eq 'TimedOut')) {
 		# the ping timed out, so return the result of our ping
 		return @($Latency, $Status)
 	}
@@ -192,13 +192,13 @@ function Find-Computer {
 		$DnsData = Resolve-DnsName -Name $Ip -ErrorAction Ignore
 		# check if we got any data
 		if ($Null -eq $DnsData) {
-			return @(0, 'DnsNotFound')
+			return @(-1, 'DnsNotFound')
 		}
 		# get our host name from the data
 		$NameHost = $DnsData.NameHost
 		# check if we got a hostname
 		if ($Null -eq $NameHost) {
-			return @(0, 'NoHostName')
+			return @(-1, 'NoHostName')
 		}
 		# split the host name and return it
 		$DnsName = $NameHost.Split('.')
@@ -347,7 +347,7 @@ foreach ($Computer in $ComputerList) {
 		# get the ping status (string)
 		$PingStatus = $PingData[1]
 		# check if we can ping the computer
-		if ($PingLatency -gt 0) {
+		if (($PingLatency -ge 0) -and ($PingStatus -ne 'TimedOut')) {
 			# check if we did not have a dns mismatch
 			if ($PingStatus -ne $DnsMismatch) {
 				Write-ColorLine -Text (Format-Line -Text "Ping ($($PingStatus))" -Computer $Computer) -Color Green

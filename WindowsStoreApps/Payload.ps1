@@ -8,32 +8,39 @@ function Format-Output {
     Write-Host $Output
 }
 
-function Get-PackageIsInstalled {
-	param (
-		[string]$Name
-	)
-	$Packages = $Null
-	$ReturnArray = $Null
+function Get-AllUserPackages {
 	try {
-		$Packages = Get-AppxPackage -AllUsers "$($Name)*" -ErrorAction SilentlyContinue
+		# return our packages
+		Get-AppxPackage -AllUsers
 	}
-	catch [TypeInitializationException]{
-		Format-Output -Text "-- Get-AppxPackage failed. Try remote PowerShell v7+"
-		# return @(packages, isinstalled)
-		$ReturnArray = 'AppxError'
+	catch [TypeInitializationException] {
+		# type initialization error
+		Format-Output -Text "-- Get-AppxPackage failed. TypeInitializationException"
+		# return null
+		$Null
 	}
-	if ($ReturnArray -ne 'AppxError') {
-		if ($Null -eq $Packages) {
-			# return @(packages, isinstalled)
-			$ReturnArray = @($Null, $False)
-		}
-		else {
-			# return @(packages, isinstalled)
-			$ReturnArray = @($Packages, $True)
-		}
+	catch {
+		# all other errors
+		Format-Output -Text "-- Get-AppxPackage failed. Unknown reason."
+		# return null
+		$Null
 	}
-	# return our results
-	$ReturnArray
+}
+
+function Get-InstalledPackage {
+	param (
+		[string]$Name,
+		[psobject[]]$AllPackages
+	)
+	# check if all packages is null
+	if ($Null -eq $AllPackages) {
+		# all packages is null, so return null
+		$Null
+	}
+	else {
+		# otherwise, get our targeted packages from all packages
+		$AllPackages | Where-Object { $_.Name -like "$($Name)*" }
+	}
 }
 
 function Remove-AllFolders {
@@ -59,7 +66,7 @@ function Remove-PackageFolder {
 		[string]$FolderName
 	)
 	if ((Test-Path -Path $FolderName -Type Container) -eq $True) {
-		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
+		Remove-Item -Path $FolderName -Recurse -Force #-ErrorAction SilentlyContinue | Out-Null
 		Format-Output '-- Removed App Folder'
 	}
 }
@@ -79,86 +86,73 @@ function Invoke-RemoveAppxPackage {
 		}
 	}
 	catch [TypeInitializationException]{
-		Format-Output -Text "-- Remove-AppxPackage failed. Try remote PowerShell v7+"
+		Format-Output -Text "-- Remove-AppxPackage failed. TypeInitializationException"
+	}
+	catch {
+		Format-Output -Text "-- Remove-AppxPackage failed. Unknown reason"
 	}
 }
 
 function Remove-Package {
 	param (
 		[string]$Name,
-		[bool]$All = $True,
 		[string[]]$Services = @(),
-		$PackageResult
+		[psobject[]]$Packages
 	)
+
+	# if the package has known services, stop them
 	foreach ($Service in $Services) {
 		Stop-Service $Service -ErrorAction SilentlyContinue
 	}
 
-	if ($Null -eq $PackageResult) {
-		Format-Output '-- Not Found'
-		Remove-AllFolders -Name $Name
-		return @(0, 0)
-	}
-	$Packages = $PackageResult[0]
-	$IsInstalled = $PackageResult[1]
-	if (($Null -eq $Packages) -and ($IsInstalled -eq $False)) {
-		Format-Output '-- Found System User'
+	# if packages is null, we have nothing to do. remove any known folders
+	if ($Null -eq $Packages) {
+		Format-Output '-- Packages is NULL, removing folders'
 		Remove-AllFolders -Name $Name
 		return @(0, 0)
 	}
 
-	# change this boolean if something was removed
-	$UninstallAttempted = $False
-
+	# remove each instance of the installed package
 	foreach ($Pkg in $Packages) {
-		foreach ($Sid in $Pkg.PackageUserInformation) {
+		# remove each user
+		foreach ($User in $Pkg.PackageUserInformation) {
 			$InstallState = $Pkg.PackageUserInformation.InstallState
 			# pending removal, skip it
 			if ($InstallState -eq 'Installed(pending removal)') {
 				Format-Output "-- Pending Removal '$($Pkg.PackageFullName)'"
 				continue
 			}
-			$UserSid = $Sid.UserSecurityId.Sid
+			$UserSid = $User.UserSecurityId.Sid
 			# system user, skip it
 			if ($UserSid -eq 'S-1-5-18') { continue }
 			# no package name, skip it
 			if ($Pkg.PackageFullName -eq '') { continue }
-			if ($All -eq $True) {			
-				Format-Output "-- Removing '$($Pkg.PackageFullName)'"
-				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
-				Format-Output "-- Removed '$($Name)'"
+			# no user sid, skip it
+			if ($UserSid -eq '') { continue }
+			# remove the package for the a user
+			Format-Output "-- Removing '$($Pkg.PackageFullName)' for User"
+			Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
+			Format-Output "-- Removed '$($Name)'"
+			Format-Output "---- User '$($UserSid)'"
 			}
-			else {
-				if ($UserSid -eq '') { continue }
-				Format-Output "-- Removing '$($Pkg.PackageFullName)'"
-				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
-				Format-Output "-- Removed '$($Name)'"
-				Format-Output "---- User '$($UserSid)'"
-			}
-			$UninstallAttempted = $True
-		}
+		# remove for all users
+		Format-Output "-- Removing '$($Pkg.PackageFullName)' All Users"
+		Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
+		Format-Output "-- Removed '$($Name)'"
 	}
 
 	Remove-AllFolders -Name $Name
 
-	$PackageResult = Get-PackageIsInstalled -Name $Name
-	$Packages = $PackageResult[0]
-	$IsInstalled = $PackageResult[1]
-	if (($Null -eq $PackageResult) -and ($UninstallAttempted -eq $True)) {
-		Format-Output "-- Uninstalled '$($Name)'"
+	$Global:AllPackages = Get-AppxPackage -AllUsers
+
+	$PackageResult = Get-InstalledPackage -Name $Name -AllPackages $Global:AllPackages
+	if ($Null -eq $PackageResult) {
+		Format-Output "-- Verified '$($Name)' was removed"
 		return @(0, 1)
 	}
-	if (($Null -eq $PackageResult) -and ($UninstallAttempted -eq $False)) {
-		Format-Output "-- '$($Name)' Not Found"
-		return @(0, 1)
-	}
-	if (($Null -ne $Packages) -and ($IsInstalled -eq $False)) {
-		Format-Output "-- '$($Name)' Not Installed"
-		return @(0, 1)
-	}
-	if (($UninstallAttempted -eq $True) -and ($IsInstalled -eq $True)) {
-		Format-Output "-- Pending Removal '$($Name)'"
-		return @(0, 1)
+	else {
+		Format-Output "-- '$($Name)' was NOT removed"
+		return @(0, 0)
 	}
 }
 
@@ -201,13 +195,11 @@ function Set-DisableAppsForDevices {
 class WindowsApp {
 	[string]$Message
 	[string]$PackageName
-	[bool]$AllUsers
 	[string[]]$Services
 
-	WindowsApp([string]$Message, [string]$PackageName, [bool]$AllUsers, [string[]]$Services) {
+	WindowsApp([string]$Message, [string]$PackageName, [string[]]$Services) {
 		$this.Message = $Message
 		$this.PackageName = $PackageName
-		$this.AllUsers = $AllUsers
 		$this.Services = $Services
 	}
 }
@@ -217,36 +209,41 @@ try {
 	$UninstallCount = 0
 
 	$WindowsAppsToRemove = @()
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling AMD Radeon Software", "AdvancedMicroDevicesInc-2.AMDRadeonSoftware", $True, @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling DuckDuckGo", "DuckDuckGo", $True, @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio (Each User)", "WavesAudio", $False, @('Waves Audio Services'))
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio (All Users)", "WavesAudio", $True, @('Waves Audio Services'))
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Bing Wallpaper", "Microsoft.BingWallpaper", $False, @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling AMD Radeon Software", "AdvancedMicroDevicesInc-2.AMDRadeonSoftware", @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling DuckDuckGo", "DuckDuckGo", @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio", "WavesAudio", @('Waves Audio Services'))
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Bing Wallpaper", "Microsoft.BingWallpaper", @())
 
 	Format-Output "Connected"
+	# if running as powershell 7, import the appx modules
+	if ($PSVersionTable.PSVersion.Major -ge 7) {
+		Import-Module Appx -UseWindowsPowerShell -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+	}
+
+	# get all the packages
+	$Global:AllPackages = Get-AppxPackage -AllUsers
+
 	foreach ($WindowsApp in $WindowsAppsToRemove) {
 		$WindowsAppData = [WindowsApp]$WindowsApp
-		$PackageResult = Get-PackageIsInstalled -Name $WindowsAppData.PackageName
-		if ($PackageResult -eq 'AppxError') {
-			return $Null
+		$Packages = Get-InstalledPackage -Name $WindowsAppData.PackageName -AllPackages $Global:AllPackages
+		if ($Null -eq $Packages) {
+			Format-Output "-- '$($WindowsAppData.PackageName)' not found"
 		}
-		if ($Null -ne $PackageResult) {
-			$Packages = $PackageResult[0]
-			$IsInstalled = $PackageResult[1]
-			if ($IsInstalled -eq $True) {
+		else {
+			$WindowsAppData = [WindowsApp]$WindowsApp
+			$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
+			if ($Null -ne $Package) {
 				Format-Output $WindowsAppData.Message
-				$Result = Remove-Package -Name $WindowsAppData.PackageName -All $WindowsAppData.AllUsers -Services $WindowsAppData.Services -PackageResult $PackageResult
+				$Result = Remove-Package -Name $WindowsAppData.PackageName -Services $WindowsAppData.Services -Packages $Packages
 				if ($Null -ne $Result) {
 					$SkipCount += $Result[0]
 					$UninstallCount += $Result[1]
 				}
 			}
 		}
-		else {
-			Format-Output "-- PackageResult is NULL"
-		}
 	}
 
+	# update the reigistry to try and stop Windows from downloading the extra software packages
 	Set-DisableAppsForDevices
 
 	if ($PSVersionTable.PSVersion.Major -lt 7) {
@@ -256,12 +253,12 @@ try {
 	else {
 		Format-Output "Skipped Hardware Inventory Cycle due to PowerShell7"
 	}
-	
+
 	Format-Output "Done"
 	@($SkipCount, $UninstallCount)
 }
 catch {
 	Format-Output "-- Error caught in script. Check error file."
 	Write-Error -Message "$($ComputerName): $($_)"
-	Write-Host
+	$Null
 }
