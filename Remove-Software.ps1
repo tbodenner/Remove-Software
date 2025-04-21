@@ -340,6 +340,9 @@ foreach ($Computer in $ComputerList) {
 			ErrorAction		= "SilentlyContinue"
 			SessionOption	= $PssOptions
 		}
+		if ($PowerShell7 -eq $True) {
+			$Parameters['ConfigurationName'] = "PowerShell.7"
+		}
 		# get our ping data
 		$PingData = Find-Computer -ADArray $ADComputerArray -ComputerName $Computer
 		# get the result (boolean)
@@ -352,12 +355,7 @@ foreach ($Computer in $ComputerList) {
 			if ($PingStatus -ne $DnsMismatch) {
 				Write-ColorLine -Text (Format-Line -Text "Ping ($($PingStatus))" -Computer $Computer) -Color Green
 				# run the script on the target computer if we can ping the computer
-				if ($PowerShell7 -eq $True) {
-					$InvokeReturn = Invoke-Command @Parameters -ConfigurationName 'PowerShell.7'
-				}
-				else {
-					$InvokeReturn = Invoke-Command @Parameters
-				}
+				$InvokeReturn = Invoke-Command @Parameters
 				# check if we got anything back from the invoke command
 				if ($Null -ne $InvokeReturn) {
 					# should be @($SkipCount, $UninstallCount)
@@ -376,7 +374,7 @@ foreach ($Computer in $ComputerList) {
 					# we got a null value from our invoke-command, add the computer to the error array
 					$ErrorArray += $Computer
 					# write the error message
-					Write-ColorLine -Text (Format-Line -Text "Invoke-Command returned NULL" -Computer $Computer) -Color Red
+					Write-ColorLine -Text (Format-Line -Text "No return value from Payload script" -Computer $Computer) -Color Red
 				}
 			}
 			else {
@@ -454,16 +452,16 @@ Write-Host "Old Computer List: '$($OldComputerListFile)'"
 
 # output computer names that had the script finish without errors
 $ComputerSucessFile = Join-Path -Path $LogFolder -ChildPath "ComputerSuccess.txt"
-Out-File -FilePath $ComputerSucessFile -InputObject $SuccessArray
+Out-File -FilePath $ComputerSucessFile -InputObject ($SuccessArray | Get-Unique)
 Write-Host "     Success List: '$($ComputerSucessFile)'"
 
 # output computer names that had an error during the script
 $ComputerErrorFile = Join-Path -Path $LogFolder -ChildPath "ComputerError.txt"
-Out-File -FilePath $ComputerErrorFile -InputObject $ErrorArray
+Out-File -FilePath $ComputerErrorFile -InputObject ($ErrorArray | Get-Unique)
 Write-Host "       Error List: '$($ComputerErrorFile)'"
 
 # write our new computer list file using our error list for the next run
-Out-File -FilePath $ComputerListFile -InputObject $ErrorArray
+Out-File -FilePath $ComputerListFile -InputObject ($ErrorArray | Get-Unique)
 Write-Host "New Computer List: '$($ComputerListFile)'"
 
 # output our errors encountered during the script

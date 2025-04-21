@@ -47,17 +47,19 @@ function Remove-AllFolders {
 	param (
 		[string]$Name
 	)
-	$AppPath = "C:\Program Files\WindowsApps\$($Name)*"
-	$Paths = Resolve-Path -Path $AppPath
-	foreach ($Path in $Paths) {
-		Remove-PackageFolder -FolderName $Path
-	}
+	if (($Null -ne $Name) -and ($Name -ne '')) {
+		$AppPath = "C:\Program Files\WindowsApps\$($Name)*"
+		$Paths = Resolve-Path -Path $AppPath
+		foreach ($Path in $Paths) {
+			Remove-PackageFolder -FolderName $Path
+		}
 
-	if ($Name -eq 'WavesAudio') {
-		$DellPath = 'C:\ProgramData\Dell\'
-		Remove-PackageFolder -FolderName $DellPath
-		$WavesPath = 'C:\Program Files\Waves\'
-		Remove-PackageFolder -FolderName $WavesPath
+		if ($Name -eq 'WavesAudio') {
+			$DellPath = 'C:\ProgramData\Dell\'
+			Remove-PackageFolder -FolderName $DellPath
+			$WavesPath = 'C:\Program Files\Waves\'
+			Remove-PackageFolder -FolderName $WavesPath
+		}
 	}
 }
 
@@ -67,7 +69,7 @@ function Remove-PackageFolder {
 	)
 	if ((Test-Path -Path $FolderName -Type Container) -eq $True) {
 		Remove-Item -Path $FolderName -Recurse -Force #-ErrorAction SilentlyContinue | Out-Null
-		Format-Output '-- Removed App Folder'
+		Format-Output "-- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
 	}
 }
 
@@ -95,20 +97,28 @@ function Invoke-RemoveAppxPackage {
 
 function Remove-Package {
 	param (
-		[string]$Name,
-		[string[]]$Services = @(),
+		[WindowsApp]$WindowsApp,
 		[psobject[]]$Packages
 	)
 
-	# if the package has known services, stop them
-	foreach ($Service in $Services) {
-		Stop-Service $Service -ErrorAction SilentlyContinue
+	# if we get an empty name, don't do anything
+	if ($WindowsApp.Name -eq '') {
+		return @(0, 0)
+	}
+
+	# if the package has any known services, stop them
+	foreach ($Service in $WindowsApp.Services) {
+		Stop-Service $Service -Force -ErrorAction SilentlyContinue
+	}
+	# if the package has any known processes, stop them
+	foreach ($Process in $WindowsApp.Processes) {
+		Stop-Process -Name $Process -Force -ErrorAction SilentlyContinue
 	}
 
 	# if packages is null, we have nothing to do. remove any known folders
 	if ($Null -eq $Packages) {
 		Format-Output '-- Packages is NULL, removing folders'
-		Remove-AllFolders -Name $Name
+		Remove-AllFolders -Name $WindowsApp.Name
 		return @(0, 0)
 	}
 
@@ -132,26 +142,25 @@ function Remove-Package {
 			# remove the package for the a user
 			Format-Output "-- Removing '$($Pkg.PackageFullName)' for User"
 			Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
-			Format-Output "-- Removed '$($Name)'"
 			Format-Output "---- User '$($UserSid)'"
 			}
 		# remove for all users
 		Format-Output "-- Removing '$($Pkg.PackageFullName)' All Users"
 		Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
-		Format-Output "-- Removed '$($Name)'"
+		Format-Output "-- Removed '$($WindowsApp.Name)'"
 	}
 
-	Remove-AllFolders -Name $Name
+	Remove-AllFolders -Name $WindowsApp.Name
 
 	$Global:AllPackages = Get-AppxPackage -AllUsers
 
-	$PackageResult = Get-InstalledPackage -Name $Name -AllPackages $Global:AllPackages
+	$PackageResult = Get-InstalledPackage -Name $WindowsApp.Name -AllPackages $Global:AllPackages
 	if ($Null -eq $PackageResult) {
-		Format-Output "-- Verified '$($Name)' was removed"
+		Format-Output "-- Verified '$($WindowsApp.Name)' was removed"
 		return @(0, 1)
 	}
 	else {
-		Format-Output "-- '$($Name)' was NOT removed"
+		Format-Output "-- '$($WindowsApp.Name)' was NOT removed"
 		return @(0, 0)
 	}
 }
@@ -196,11 +205,13 @@ class WindowsApp {
 	[string]$Message
 	[string]$PackageName
 	[string[]]$Services
+	[string[]]$Processes
 
-	WindowsApp([string]$Message, [string]$PackageName, [string[]]$Services) {
+	WindowsApp([string]$Message, [string]$PackageName, [string[]]$Services, [string[]]$Processes) {
 		$this.Message = $Message
 		$this.PackageName = $PackageName
 		$this.Services = $Services
+		$this.Processes = $Processes
 	}
 }
 
@@ -209,10 +220,10 @@ try {
 	$UninstallCount = 0
 
 	$WindowsAppsToRemove = @()
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling AMD Radeon Software", "AdvancedMicroDevicesInc-2.AMDRadeonSoftware", @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling DuckDuckGo", "DuckDuckGo", @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio", "WavesAudio", @('Waves Audio Services'))
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Bing Wallpaper", "Microsoft.BingWallpaper", @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling AMD Radeon Software", "AdvancedMicroDevicesInc-2.AMDRadeonSoftware", @(), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling DuckDuckGo", "DuckDuckGo", @(), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio", "WavesAudio", @('Waves Audio Services'), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Bing Wallpaper", "Microsoft.BingWallpaper", @(), @('BingWallpaper'))
 
 	Format-Output "Connected"
 	# if running as powershell 7, import the appx modules
@@ -234,7 +245,7 @@ try {
 			$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
 			if ($Null -ne $Package) {
 				Format-Output $WindowsAppData.Message
-				$Result = Remove-Package -Name $WindowsAppData.PackageName -Services $WindowsAppData.Services -Packages $Packages
+				$Result = Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
 				if ($Null -ne $Result) {
 					$SkipCount += $Result[0]
 					$UninstallCount += $Result[1]
