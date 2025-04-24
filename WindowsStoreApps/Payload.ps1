@@ -147,7 +147,7 @@ function Remove-Package {
 		# remove for all users
 		Format-Output "-- Removing '$($Pkg.PackageFullName)' All Users"
 		Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
-		Format-Output "-- Removed '$($WindowsApp.Name)'"
+		Format-Output "-- Removed '$($Pkg.PackageFullName)'"
 	}
 
 	Remove-AllFolders -Name $WindowsApp.Name
@@ -254,7 +254,7 @@ try {
 		}
 	}
 
-	# update the reigistry to try and stop Windows from downloading the extra software packages
+	# update the registry to try and stop Windows from downloading the extra software packages
 	Set-DisableAppsForDevices
 
 	if ($PSVersionTable.PSVersion.Major -lt 7) {
