@@ -138,12 +138,12 @@ function Remove-Package {
 			# no package name, skip it
 			if ($Pkg.PackageFullName -eq '') { continue }
 			# no user sid, skip it
-			if ($UserSid -eq '') { continue }
+			if (($Null -eq $UserSid) -or ($UserSid -eq '')) { continue }
 			# remove the package for the a user
 			Format-Output "-- Removing '$($Pkg.PackageFullName)' for User"
 			Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
 			Format-Output "---- User '$($UserSid)'"
-			}
+		}
 		# remove for all users
 		Format-Output "-- Removing '$($Pkg.PackageFullName)' All Users"
 		Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
@@ -201,6 +201,21 @@ function Set-DisableAppsForDevices {
 	Add-RegistryKey -Path $RegPath -KeyName $RegKeyName -Value $RegKeyValue -KeyType DWord
 }
 
+function Set-AppxLibrary {
+	Add-Type -AssemblyName "System.EnterpriseServices"
+	$publish = [System.EnterpriseServices.Internal.Publish]::new()
+	
+	@(
+		'System.Numerics.Vectors.dll',
+		'System.Runtime.CompilerServices.Unsafe.dll',
+		'System.Security.Principal.Windows.dll',
+		'System.Memory.dll'
+	) | ForEach-Object {
+		$dllPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\$_"
+		$publish.GacInstall($dllPath)
+	}
+}
+
 class WindowsApp {
 	[string]$Message
 	[string]$PackageName
@@ -227,28 +242,32 @@ try {
 
 	Format-Output "Connected"
 	# if running as powershell 7, import the appx modules
-	if ($PSVersionTable.PSVersion.Major -ge 7) {
-		Import-Module Appx -UseWindowsPowerShell -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-	}
+	#if (($PSVersionTable.PSVersion.Major -ge 7) -and ($Null -eq (Get-Module Appx))) {
+	#	Import-Module Appx -UseWindowsPowerShell -WarningAction SilentlyContinue #-ErrorAction SilentlyContinue
+	#}
 
+	# apply a fix to get Appx working in remote sessions
+	Set-AppxLibrary
 	# get all the packages
 	$Global:AllPackages = Get-AppxPackage -AllUsers
-
-	foreach ($WindowsApp in $WindowsAppsToRemove) {
-		$WindowsAppData = [WindowsApp]$WindowsApp
-		$Packages = Get-InstalledPackage -Name $WindowsAppData.PackageName -AllPackages $Global:AllPackages
-		if ($Null -eq $Packages) {
-			Format-Output "-- '$($WindowsAppData.PackageName)' not found"
-		}
-		else {
+	
+	if ($Null -ne $Global:AllPackages) {
+		foreach ($WindowsApp in $WindowsAppsToRemove) {
 			$WindowsAppData = [WindowsApp]$WindowsApp
-			$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
-			if ($Null -ne $Package) {
-				Format-Output $WindowsAppData.Message
-				$Result = Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
-				if ($Null -ne $Result) {
-					$SkipCount += $Result[0]
-					$UninstallCount += $Result[1]
+			$Packages = Get-InstalledPackage -Name $WindowsAppData.PackageName -AllPackages $Global:AllPackages
+			if ($Null -eq $Packages) {
+				Format-Output "-- '$($WindowsAppData.PackageName)' not found"
+			}
+			else {
+				$WindowsAppData = [WindowsApp]$WindowsApp
+				$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
+				if ($Null -ne $Package) {
+					Format-Output $WindowsAppData.Message
+					$Result = Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
+					if ($Null -ne $Result) {
+						$SkipCount += $Result[0]
+						$UninstallCount += $Result[1]
+					}
 				}
 			}
 		}
@@ -256,7 +275,8 @@ try {
 
 	# update the registry to try and stop Windows from downloading the extra software packages
 	Set-DisableAppsForDevices
-
+	
+	# run a hardware update cycle
 	if ($PSVersionTable.PSVersion.Major -lt 7) {
 		Format-Output "Running Hardware Inventory Cycle"
 		Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
@@ -264,7 +284,8 @@ try {
 	else {
 		Format-Output "Skipped Hardware Inventory Cycle due to PowerShell7"
 	}
-
+	
+	# done, return our results
 	Format-Output "Done"
 	@($SkipCount, $UninstallCount)
 }
