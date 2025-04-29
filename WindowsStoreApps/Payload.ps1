@@ -102,7 +102,7 @@ function Remove-Package {
 	)
 
 	# if we get an empty name, don't do anything
-	if ($WindowsApp.Name -eq '') {
+	if (($Null -eq $WindowsApp) -or ($Null -eq $WindowsApp.Name) -or ($WindowsApp.Name -eq '')) {
 		return @(0, 0)
 	}
 

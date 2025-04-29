@@ -400,10 +400,6 @@ foreach ($Computer in $ComputerList) {
 				$ErrorArray += $Computer
 			}
 		}
-		else {
-			# write an empty line after our not in AD message
-			Write-Host
-		}
 		# increment our count
 		$ComputerCount += 1
 	}
