@@ -102,7 +102,8 @@ function Remove-Package {
 	)
 
 	# if we get an empty name, don't do anything
-	if (($Null -eq $WindowsApp) -or ($Null -eq $WindowsApp.Name) -or ($WindowsApp.Name -eq '')) {
+	if (($Null -eq $WindowsApp) -or ($Null -eq $WindowsApp.PackageName) -or ($WindowsApp.PackageName -eq '')) {
+		Format-Output "-- App name was null or empty"
 		return @(0, 0)
 	}
 
@@ -118,7 +119,7 @@ function Remove-Package {
 	# if packages is null, we have nothing to do. remove any known folders
 	if ($Null -eq $Packages) {
 		Format-Output '-- Packages is NULL, removing folders'
-		Remove-AllFolders -Name $WindowsApp.Name
+		Remove-AllFolders -Name $WindowsApp.PackageName
 		return @(0, 0)
 	}
 
@@ -137,30 +138,37 @@ function Remove-Package {
 			if ($UserSid -eq 'S-1-5-18') { continue }
 			# no package name, skip it
 			if ($Pkg.PackageFullName -eq '') { continue }
-			# no user sid, skip it
-			if (($Null -eq $UserSid) -or ($UserSid -eq '')) { continue }
-			# remove the package for the a user
-			Format-Output "-- Removing '$($Pkg.PackageFullName)' for User"
-			Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
-			Format-Output "---- User '$($UserSid)'"
+			# check if we have a user sid
+			if (($Null -eq $UserSid) -or ($UserSid -eq '')) {
+				# since we have no user sid, remove for all users
+				Format-Output "-- Removing '$($Pkg.PackageFullName)' for User"
+				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $False
+				Format-Output "---- Unknown User"
+			}
+			else {
+				# otherwise, remove the package for the user sid
+				Format-Output "-- Removing '$($Pkg.PackageFullName)' for a single user"
+				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
+				Format-Output "---- User '$($UserSid)'"
+			}
 		}
 		# remove for all users
-		Format-Output "-- Removing '$($Pkg.PackageFullName)' All Users"
+		Format-Output "-- Removing '$($Pkg.PackageFullName)' for all users"
 		Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
 		Format-Output "-- Removed '$($Pkg.PackageFullName)'"
 	}
 
-	Remove-AllFolders -Name $WindowsApp.Name
+	Remove-AllFolders -Name $WindowsApp.PackageName
 
 	$Global:AllPackages = Get-AppxPackage -AllUsers
 
-	$PackageResult = Get-InstalledPackage -Name $WindowsApp.Name -AllPackages $Global:AllPackages
+	$PackageResult = Get-InstalledPackage -Name $WindowsApp.PackageName -AllPackages $Global:AllPackages
 	if ($Null -eq $PackageResult) {
-		Format-Output "-- Verified '$($WindowsApp.Name)' was removed"
+		Format-Output "-- Verified '$($WindowsApp.PackageName)' was removed"
 		return @(0, 1)
 	}
 	else {
-		Format-Output "-- '$($WindowsApp.Name)' was NOT removed"
+		Format-Output "-- '$($WindowsApp.PackageName)' was NOT removed"
 		return @(0, 0)
 	}
 }
@@ -217,13 +225,11 @@ function Set-AppxLibrary {
 }
 
 class WindowsApp {
-	[string]$Message
 	[string]$PackageName
 	[string[]]$Services
 	[string[]]$Processes
 
-	WindowsApp([string]$Message, [string]$PackageName, [string[]]$Services, [string[]]$Processes) {
-		$this.Message = $Message
+	WindowsApp([string]$PackageName, [string[]]$Services, [string[]]$Processes) {
 		$this.PackageName = $PackageName
 		$this.Services = $Services
 		$this.Processes = $Processes
@@ -235,19 +241,16 @@ try {
 	$UninstallCount = 0
 
 	$WindowsAppsToRemove = @()
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling AMD Radeon Software", "AdvancedMicroDevicesInc-2.AMDRadeonSoftware", @(), @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling DuckDuckGo", "DuckDuckGo", @(), @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Waves Audio", "WavesAudio", @('Waves Audio Services'), @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Uninstalling Bing Wallpaper", "Microsoft.BingWallpaper", @(), @('BingWallpaper'))
+	$WindowsAppsToRemove += [WindowsApp]::new("AdvancedMicroDevicesInc", @(), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("DuckDuckGo", @(), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
 
 	Format-Output "Connected"
-	# if running as powershell 7, import the appx modules
-	#if (($PSVersionTable.PSVersion.Major -ge 7) -and ($Null -eq (Get-Module Appx))) {
-	#	Import-Module Appx -UseWindowsPowerShell -WarningAction SilentlyContinue #-ErrorAction SilentlyContinue
-	#}
-
+	
 	# apply a fix to get Appx working in remote sessions
 	Set-AppxLibrary
+
 	# get all the packages
 	$Global:AllPackages = Get-AppxPackage -AllUsers
 	
@@ -262,9 +265,12 @@ try {
 				$WindowsAppData = [WindowsApp]$WindowsApp
 				$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
 				if ($Null -ne $Package) {
-					Format-Output $WindowsAppData.Message
+					Format-Output "Uninstalling $($WindowsAppData.PackageName)"
 					$Result = Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
-					if ($Null -ne $Result) {
+					if ($Null -eq $Result) {
+						Format-Output "-- Null result for $($WindowsAppData.PackageName)"
+					}
+					else {
 						$SkipCount += $Result[0]
 						$UninstallCount += $Result[1]
 					}
