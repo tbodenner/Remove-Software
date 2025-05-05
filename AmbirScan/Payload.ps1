@@ -39,11 +39,11 @@ try {
 			$Version = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).DisplayVersion
 			if ($Null -ne $Version) {
 				$Version = $Version.Trim()
+				Format-Output "--Version: '$($Version)'"
 			}
 			else {
 				$Version = ""
 			}
-			Format-Output "--Version: '$($Version)'"
 			if ($Version -ne "") {
 				$ErrString = "$($ComputerName): Failed To Uninstall '$($ProductName) v$($UninstallCurrentVersion)'"
 				Format-Output $ErrString
