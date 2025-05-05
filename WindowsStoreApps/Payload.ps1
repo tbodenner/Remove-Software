@@ -68,7 +68,7 @@ function Remove-PackageFolder {
 		[string]$FolderName
 	)
 	if ((Test-Path -Path $FolderName -Type Container) -eq $True) {
-		Remove-Item -Path $FolderName -Recurse -Force #-ErrorAction SilentlyContinue | Out-Null
+		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 		Format-Output "-- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
 	}
 }
@@ -241,7 +241,7 @@ try {
 	$UninstallCount = 0
 
 	$WindowsAppsToRemove = @()
-	$WindowsAppsToRemove += [WindowsApp]::new("AdvancedMicroDevicesInc", @(), @())
+	$WindowsAppsToRemove += [WindowsApp]::new("AdvancedMicroDevicesInc", @('AMD Crash Defender Service','AMD External Events Utility'), @())
 	$WindowsAppsToRemove += [WindowsApp]::new("DuckDuckGo", @(), @())
 	$WindowsAppsToRemove += [WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
 	$WindowsAppsToRemove += [WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
@@ -258,10 +258,7 @@ try {
 		foreach ($WindowsApp in $WindowsAppsToRemove) {
 			$WindowsAppData = [WindowsApp]$WindowsApp
 			$Packages = Get-InstalledPackage -Name $WindowsAppData.PackageName -AllPackages $Global:AllPackages
-			if ($Null -eq $Packages) {
-				Format-Output "-- '$($WindowsAppData.PackageName)' not found"
-			}
-			else {
+			if ($Null -ne $Packages) {
 				$WindowsAppData = [WindowsApp]$WindowsApp
 				$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
 				if ($Null -ne $Package) {
