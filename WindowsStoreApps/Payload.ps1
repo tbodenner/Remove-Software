@@ -240,13 +240,30 @@ try {
 	$SkipCount = 0
 	$UninstallCount = 0
 
-	$WindowsAppsToRemove = @()
-	$WindowsAppsToRemove += [WindowsApp]::new("AdvancedMicroDevicesInc", @('AMD Crash Defender Service','AMD External Events Utility'), @())
-	$WindowsAppsToRemove += [WindowsApp]::new("DuckDuckGo", @(), @())
-	$WindowsAppsToRemove += [WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
-	$WindowsAppsToRemove += [WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
-
 	Format-Output "Connected"
+
+	# services to stop for amd radeon
+	$AmdServices = @(
+		'AMD Crash Defender Service'
+		'AMD External Events Utility'
+		'RadeonSoftware'
+		'AMDRSServ'
+		'AMDRSSrcExt'
+	)
+
+	# create our windows app objects
+	$AmdWindowsApp = [WindowsApp]::new("AdvancedMicroDevicesInc", $AmdServices, @())
+	$DuckWindowsApp = [WindowsApp]::new("DuckDuckGo", @(), @())
+	$WavesWindowsApp = [WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
+	$BingWindowsApp = [WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
+
+	# add our apps to an array
+	$WindowsAppsToRemove = @(
+		$AmdWindowsApp
+		$DuckWindowsApp
+		$WavesWindowsApp
+		$BingWindowsApp
+	)
 	
 	# apply a fix to get Appx working in remote sessions
 	Set-AppxLibrary
