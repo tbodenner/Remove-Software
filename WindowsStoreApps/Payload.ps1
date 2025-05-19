@@ -48,16 +48,41 @@ function Remove-AllFolders {
 		[string]$Name
 	)
 	if (($Null -ne $Name) -and ($Name -ne '')) {
-		$AppPath = "C:\Program Files\WindowsApps\$($Name)*"
+		$AppPath = @(
+			"C:\Program Files\WindowsApps\$($Name)*"
+			"C:\ProgramData\Packages\$($Name)*"
+		)
 		$Paths = Resolve-Path -Path $AppPath
 		foreach ($Path in $Paths) {
 			Remove-PackageFolder -FolderName $Path
+		}
+
+		# get user folders
+		$UserFolders = Get-ChildItem -Path C:\Users\ -Directory
+
+		foreach ($User in $UserFolders) {
+			# create full user folder path
+			$UserPath = Join-Path -Path 'C:\Users\' -ChildPath $User 
+			$UserPath = Join-Path -Path $UserPath -ChildPath "AppData\Local\Microsoft\WindowsApps\$($Name)*"
+			# get all the paths that match our user path
+			$UserPaths = Resolve-Path -Path $UserPath
+			# remove each path
+			foreach ($Path in $UserPaths) {
+				Remove-PackageFolder -FolderName $Path
+			}
 		}
 
 		if ($Name -eq 'WavesAudio') {
 			$DellPath = 'C:\ProgramData\Dell\'
 			Remove-PackageFolder -FolderName $DellPath
 			$WavesPath = 'C:\Program Files\Waves\'
+			Remove-PackageFolder -FolderName $WavesPath
+		}
+
+		if ($Name -eq 'AdvancedMicroDevicesInc') {
+			$DellPath = 'C:\ProgramData\AMD\'
+			Remove-PackageFolder -FolderName $DellPath
+			$WavesPath = 'C:\Program Files\AMD\'
 			Remove-PackageFolder -FolderName $WavesPath
 		}
 	}
