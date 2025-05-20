@@ -8,7 +8,7 @@ param (
 	[switch]$PowerShell7
 )
 
-# the searchbase will be loaded from our config file
+# the search base will be loaded from our config file
 $Global:SearchBase = ""
 # the name of our config json file
 $Global:JsonConfigFileName = 'config.json'
@@ -180,9 +180,9 @@ function Find-Computer {
 		$Status = $NoStatus
 	}
 	# check if the ping timed out
-	if (($Latency -lt 0) -or ($Status -eq $NoStatus) -or ($Status -eq 'TimedOut')) {
+	if (($Latency -lt 0) -or ($Status -eq $NoStatus) -or ($Status -in @('TimedOut', 'DestinationHostUnreachable'))) {
 		# the ping timed out, so return the result of our ping
-		return @($Latency, $Status)
+		return @(-1, $Status)
 	}
 	# set our error value for our dns name
 	$DnsName = $Null
@@ -263,7 +263,7 @@ $PayloadFile = Join-Path -Path $InputPath -ChildPath "Payload.ps1"
 # file that contains our computer list
 $ComputerListFile = Join-Path -Path $InputPath -ChildPath "ComputerList.txt"
 
-# test if our required paylod file exists
+# test if our required payload file exists
 if ((Test-Path -Path $PayloadFile) -eq $False) {
 	Write-ColorLine -Text "Error: Payload file not found." -Color Red
 	return
@@ -274,7 +274,7 @@ if ((Test-Path -Path $ComputerListFile) -eq $False) {
 	return
 }
 
-# an array to collect the computer names with an errror
+# an array to collect the computer names with an error
 $ErrorArray = @()
 
 # an array to collect the computer names that succeeded
@@ -447,9 +447,9 @@ Move-Item -Path $ComputerListFile -Destination $OldComputerListFile
 Write-Host "Old Computer List: '$($OldComputerListFile)'"
 
 # output computer names that had the script finish without errors
-$ComputerSucessFile = Join-Path -Path $LogFolder -ChildPath "ComputerSuccess.txt"
-Out-File -FilePath $ComputerSucessFile -InputObject ($SuccessArray | Get-Unique)
-Write-Host "     Success List: '$($ComputerSucessFile)'"
+$ComputerSuccessFile = Join-Path -Path $LogFolder -ChildPath "ComputerSuccess.txt"
+Out-File -FilePath $ComputerSuccessFile -InputObject ($SuccessArray | Get-Unique)
+Write-Host "     Success List: '$($ComputerSuccessFile)'"
 
 # output computer names that had an error during the script
 $ComputerErrorFile = Join-Path -Path $LogFolder -ChildPath "ComputerError.txt"
