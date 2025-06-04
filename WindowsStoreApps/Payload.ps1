@@ -48,13 +48,26 @@ function Remove-AllFolders {
 		[string]$Name
 	)
 	if (($Null -ne $Name) -and ($Name -ne '')) {
-		$AppPath = @(
+		# our paths to remove
+		$AppPaths = @(
 			"C:\Program Files\WindowsApps\$($Name)*"
 			"C:\ProgramData\Packages\$($Name)*"
+			"C:\ProgramData\Dell\" # Waves MaxxAudio
+			"C:\Program Files\Waves\" # Waves MaxxAudio
+			"C:\ProgramData\AMD\" # AMD Radeon Software
+			"C:\Program Files\AMD\" # AMD Radeon Software
+			"C:\$WINDOWS.~BT\NewOS\Windows\System32\DriverStore\FileRepository\waves*" # Waves MaxxAudio
 		)
-		$Paths = Resolve-Path -Path $AppPath
-		foreach ($Path in $Paths) {
-			Remove-PackageFolder -FolderName $Path
+		
+		# remove each path
+		foreach ($AppPath in $AppPaths) {
+			# resolve our paths
+			$ResolvedPaths = Resolve-Path -Path $AppPath -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+			if ($null -ne $ResolvedPaths) {
+				foreach ($ResolvedPath in $ResolvedPaths) {
+					Remove-PackageFolder -FolderName $ResolvedPath
+				}
+			}
 		}
 
 		# get user folders
@@ -72,18 +85,9 @@ function Remove-AllFolders {
 			}
 		}
 
-		if ($Name -eq 'WavesAudio') {
-			$DellPath = 'C:\ProgramData\Dell\'
-			Remove-PackageFolder -FolderName $DellPath
-			$WavesPath = 'C:\Program Files\Waves\'
-			Remove-PackageFolder -FolderName $WavesPath
-		}
-
-		if ($Name -eq 'AdvancedMicroDevicesInc') {
-			$DellPath = 'C:\ProgramData\AMD\'
-			Remove-PackageFolder -FolderName $DellPath
-			$WavesPath = 'C:\Program Files\AMD\'
-			Remove-PackageFolder -FolderName $WavesPath
+		# remove extra items for AMD, some of them are redundant and need to be cleaned up
+		if ($Name -eq "AdvancedMicroDevicesInc") {
+			Remove-AmdFolders
 		}
 	}
 }
@@ -95,6 +99,84 @@ function Remove-PackageFolder {
 	if ((Test-Path -Path $FolderName -Type Container) -eq $True) {
 		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 		Format-Output "-- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
+	}
+}
+
+# extra items to remove for AMD Radeon Software
+function Remove-AmdFolders {
+	try {
+		$ProcArray = @(
+			"RadeonSoftware",
+			"AMDRSServ",
+			"AMDRSSrcExt"
+		)
+		foreach ($Proc in $ProcArray) {
+			if ($Null -ne (Get-Process "$($Proc)*")) {
+				try {
+					Stop-Process -Name $Proc -Force
+					Format-Output "-- Stopped process '$($Proc)'"
+				}
+				catch {
+					Format-Output "-- Failed to stop process '$($Proc)'"
+				}
+			}
+		}
+
+		$ServiceArray = @(
+			"AMD Crash Defender Service",
+			"AMD External Events Utility"
+		)
+
+		foreach ($Serv in $ServiceArray) {
+			if ($Null -ne (Get-Service $Serv -ErrorAction SilentlyContinue)) {
+				try {
+					Stop-Service -Name $Serv
+					Format-Output "-- Stopped service '$($Serv)'"
+					sc.exe delete $Serv | Out-Null
+					Format-Output "-- Removed service '$($Serv)'"
+				}
+				catch {
+					Format-Output "-- Failed to stop or remove service '$($Serv)'"
+				}
+			}
+		}
+
+		$AmdPaths = @(
+			"C:\Program Files\AMD\",
+			"C:\ProgramData\AMD\"
+		)
+		$AmdPaths += Resolve-Path -Path "C:\Program Files\WindowsApps\AdvancedMicroDevicesInc*"
+		$MaxPathLen = 50
+		foreach ($Path in $AmdPaths) {
+			if ((Test-Path -Path $Path) -eq $True) {
+				Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
+				if ((Test-Path -Path $Path) -eq $True) {
+					if ($Path.Length -gt $MaxPathLen) {
+						Format-Output "-- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
+					}
+					else {
+						Format-Output "-- Failed to remove folder '$($Path)'"
+					}
+					if ($Path -eq "C:\Program Files\AMD\") {
+						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
+						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0002\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
+						Format-Output "-- Removed 'DalDCELogFilePath' registry value"
+					}
+				}
+				else {
+					if ($Path.Length -gt $MaxPathLen) {
+						Format-Output "-- Removed folder '$(Split-Path -Path $Path -Leaf)'"
+					}
+					else {
+						Format-Output "-- Removed folder '$($Path)'"
+					}
+				}
+			}
+			Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AMD Catalyst Install Manager' -ErrorAction SilentlyContinue
+		}
+	}
+	catch {
+		Format-Output "-- Error caught in Remove-AmdFolders"
 	}
 }
 
