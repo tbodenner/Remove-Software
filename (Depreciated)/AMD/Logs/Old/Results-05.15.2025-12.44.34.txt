@@ -1,0 +1,7 @@
+
+Results:
+    Total: 13
+  Success: 6
+     Skip: 0
+Uninstall: 0
+    Error: 6

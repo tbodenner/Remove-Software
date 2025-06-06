@@ -1,0 +1,2 @@
+Write-Error: PRE-LT43865: Unable to ping PRE-LT43865 - (NotFound, -1)
+Write-Error: PRE-LT38164: Unable to ping PRE-LT38164 - (NotFound, -1)
