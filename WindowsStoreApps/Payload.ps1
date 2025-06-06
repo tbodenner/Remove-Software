@@ -52,11 +52,11 @@ function Remove-AllFolders {
 		$AppPaths = @(
 			"C:\Program Files\WindowsApps\$($Name)*"
 			"C:\ProgramData\Packages\$($Name)*"
-			"C:\ProgramData\Dell\" # Waves MaxxAudio
-			"C:\Program Files\Waves\" # Waves MaxxAudio
-			"C:\ProgramData\AMD\" # AMD Radeon Software
-			"C:\Program Files\AMD\" # AMD Radeon Software
-			"C:\$WINDOWS.~BT\NewOS\Windows\System32\DriverStore\FileRepository\waves*" # Waves MaxxAudio
+			'C:\ProgramData\Dell\' # Waves MaxxAudio
+			'C:\Program Files\Waves\' # Waves MaxxAudio
+			'C:\ProgramData\AMD\' # AMD Radeon Software
+			'C:\Program Files\AMD\' # AMD Radeon Software
+			'C:\$WINDOWS.~BT\NewOS\Windows\System32\DriverStore\FileRepository\waves*' # Waves MaxxAudio
 		)
 		
 		# remove each path
@@ -96,9 +96,15 @@ function Remove-PackageFolder {
 	param (
 		[string]$FolderName
 	)
-	if ((Test-Path -Path $FolderName -Type Container) -eq $True) {
+	if ((Test-Path -Path $FolderName) -eq $True) {
+		$IsFolder = (Get-Item -Path $FolderName).PSIsContainer
 		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
-		Format-Output "-- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
+		if ($IsFolder -eq $true) {
+			Format-Output "-- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
+		}
+		else {
+			Format-Output "-- Removed App File '$(Split-Path -Path $FolderName -Leaf)'"
+		}
 	}
 }
 
@@ -399,6 +405,10 @@ try {
 			}
 		}
 	}
+
+	# try to remove all folders even if no packages were found
+	Format-Output "Removing Folders"
+	Remove-AllFolders -Name "NO APP NAME"
 
 	# update the registry to try and stop Windows from downloading the extra software packages
 	Set-DisableAppsForDevices
