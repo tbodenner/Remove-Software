@@ -78,7 +78,7 @@ function Remove-AllFolders {
 			$UserPath = Join-Path -Path 'C:\Users\' -ChildPath $User 
 			$UserPath = Join-Path -Path $UserPath -ChildPath "AppData\Local\Microsoft\WindowsApps\$($Name)*"
 			# get all the paths that match our user path
-			$UserPaths = Resolve-Path -Path $UserPath
+			$UserPaths = Resolve-Path -Path $UserPath -ErrorAction SilentlyContinue
 			# remove each path
 			foreach ($Path in $UserPaths) {
 				Remove-PackageFolder -FolderName $Path

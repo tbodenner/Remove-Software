@@ -8,24 +8,32 @@ function Format-Output {
 	Write-Host $Output
 }
 
-function Get-CmInum {
-	# software package we are looking for
-	$CmName = 'CM'
-	# x86
-	$Path32 = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
-	# amd64
-	$Path64 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
-	# get all installed software
-	$Software = Get-ItemProperty -Path $Path32, $Path64
-	# look for our software in our software list
-	$Inum = ($Software | Where-Object { $_.DisplayName -eq $CmName }).PSChildName
-	# return the inum to be removed by msiexec
-	return $Inum
-}
-
 try {
 	Format-Output "Connected"
 	
+	# check if zoom is running
+	$ZoomProcess = Get-Process -Name Zoom -ErrorAction SilentlyContinue
+	# if a zoom executable is found
+	if ($null -ne $ZoomProcess) {
+		# get the UDP connections
+		$ZoomUPD = Get-NetUDPEndpoint -OwningProcess $ZoomProcess.Id -ErrorAction SilentlyContinue
+		# remove any local connections and return a count of data being sent
+		$ConnCount = ($ZoomUPD | Where-Object {$_.LocalAddress -ne '127.0.0.1'} | Measure-Object).Count
+		# if the count is non-zero, zoom is in a meeting
+		if ($ConnCount -gt 0) {
+			# write a message
+			Format-Output "-- Active Zoom meeting detected!"
+			# and exit
+			return
+		}
+		else {
+			# otherwise, stop the process and continue to remove the installed application
+			Stop-Process $ZoomProcess -Force -ErrorAction SilentlyContinue
+			
+			# wait 2 seconds for the process to end
+			Start-Sleep -Seconds 2
+		}
+	}
 	# get user folders
 	$UserFolders = Get-ChildItem -Path C:\Users\ -Directory
 
@@ -77,38 +85,10 @@ try {
 			Remove-Item -Path $ZoomTask -Force
 			Format-Output "-- Removed Zoom task file"
 		}
-
-		# remove cm software package
-		$CmINum = Get-CmInum
-		# if we got an inum, try to uninstall the package
-		if ($Null -ne $CmINum) {
-			# uninstall the package
-			cmd.exe /c "msiexec.exe /x `"$($CmINum)`" /quiet /norestart"
-			# get the inum again
-			$CmINum = Get-CmInum
-			# check if the inum is null
-			if ($Null -eq $CmINum) {
-				# the software was removed
-				Format-Output "-- Removed CM package"
-			}
-			else {
-				# otherwise, the software was not removed
-				Format-Output "-- Failed to removed CM package"
-			}
-		}
-
-		# delete a folder
-		$CompanyPath = 'C:\Program Files (x86)\My Company Name\My Product Name'
-		# check if the folder exists
-		if ((Test-Path -Path $CompanyPath -PathType Container) -eq $True) {
-			# if the folder exists, then remove it
-			Remove-Item -Path $CompanyPath -Force -Recurse
-			Format-Output "-- Removed 'My Company Name' folder"
-		}
 	}
 	
 	# trigger sccm scan
-	Format-Output "Running Hardware Inventory Cycle"
+	Format-Output "Triggering Hardware Inventory Cycle"
 	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
 	
 	Format-Output "Done"

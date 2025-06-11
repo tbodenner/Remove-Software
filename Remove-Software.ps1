@@ -8,10 +8,12 @@ param (
 	[switch]$PowerShell7
 )
 
-# the search base will be loaded from our config file
-$Global:SearchBase = ""
 # the name of our config json file
 $Global:JsonConfigFileName = 'config.json'
+
+# these properties are loaded from the config file
+$Global:ConfigDomains = $null
+$Global:ConfigFilter = ""
 
 function Get-ConfigFromJson {
 	# check if our config file exists
@@ -31,12 +33,16 @@ function Get-ConfigFromJson {
 		exit
 	}
 	# set our variable from the config file
-	$Global:SearchBase = Test-ConfigValueNull -Hashtable $JsonConfigHashtable -Key "SearchBase"
-	Write-Host "Using SearchBase: $($Global:SearchBase)" -ForegroundColor Green
+	$Global:ConfigDomains = Test-ConfigValueNullOrEmpty -Hashtable $JsonConfigHashtable -Key "Domains"
+	$Global:ConfigFilter = Test-ConfigValueNullOrEmpty -Hashtable $JsonConfigHashtable -Key "Filter"
+	# write our config values to the host
+	Write-Host "Values read from $($Global:JsonConfigFileName):" -ForegroundColor DarkCyan
+	Write-Host "  Domains: $($Global:ConfigDomains)" -ForegroundColor Cyan
+	Write-Host "   Filter: $($Global:ConfigFilter)" -ForegroundColor Cyan
 }
 
 # check if a config value is null
-function Test-ConfigValueNull {
+function Test-ConfigValueNullOrEmpty {
 	param (
 		[Parameter(Mandatory=$True)][hashtable]$Hashtable,
 		[Parameter(Mandatory=$True)][string]$Key
@@ -114,18 +120,23 @@ function Write-ColorLine {
 
 # get an array of all our computers in AD
 function Get-AdComputerArray {
-	# the AD object we are going to search
-	#$SearchBase = 'OU=Prescott (PRE),OU=VISN18,DC=v18,DC=med,DC=va,DC=gov'
-	# get our AD data
-	$ADComputers = Get-ADComputer -Filter * -SearchBase $Global:SearchBase | Select-Object Name
-	# create our empty array
-	$ADArray = @()
-	# create a clean array from our AD data
-	foreach ($Item in $ADComputers) {
-		$ADArray += $Item.Name
+	param (
+		[string[]]$Domains,
+		[string]$Filter
+	)
+	# array to store our AD computers in
+	$ADComputers = @()
+	# get our AD computers from each domain
+	foreach ($Domain in $Domains) {
+		# get our domain controller from our domain name
+		$Server = Get-ADDomainController -Discover -DomainName $Domain
+		# write to host the server we are using to find computer
+		Write-Host "Getting computers from '$($Server.Name)'" -ForegroundColor DarkCyan
+		# get all computer names from the current domain and add them to our array
+		$ADComputers += (Get-ADComputer -Filter $Filter -Server $Server).Name
 	}
 	# return our array
-	$ADArray
+	return $ADComputers
 }
 
 # test if a computer is in AD
@@ -316,7 +327,7 @@ Clear-DnsClientCache
 $PssOptions = New-PSSessionOption -MaxConnectionRetryCount 0 -OpenTimeout 30000 -OperationTimeout 30000
 
 # get an array of AD computers
-$ADComputerArray = Get-AdComputerArray
+$ADComputerArray = Get-AdComputerArray -Domains $Global:ConfigDomains -Filter $Global:ConfigFilter
 
 # loop through list of computers
 foreach ($Computer in $ComputerList) {
