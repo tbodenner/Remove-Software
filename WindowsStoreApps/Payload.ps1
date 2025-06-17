@@ -2,12 +2,6 @@
 
 $ComputerName = $env:computername
 
-function Format-Output {
-	param ([string]$Text)
-	$Output = "[--|{0}| {1}" -f $ComputerName, $Text
-    Write-Host $Output
-}
-
 function Get-AllUserPackages {
 	try {
 		# return our packages
@@ -15,13 +9,13 @@ function Get-AllUserPackages {
 	}
 	catch [TypeInitializationException] {
 		# type initialization error
-		Format-Output -Text "-- Get-AppxPackage failed. TypeInitializationException"
+		Write-Host "$($ComputerName): -- Get-AppxPackage failed. TypeInitializationException"
 		# return null
 		$Null
 	}
 	catch {
 		# all other errors
-		Format-Output -Text "-- Get-AppxPackage failed. Unknown reason."
+		Write-Host "$($ComputerName): -- Get-AppxPackage failed. Unknown reason."
 		# return null
 		$Null
 	}
@@ -100,10 +94,10 @@ function Remove-PackageFolder {
 		$IsFolder = (Get-Item -Path $FolderName).PSIsContainer
 		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 		if ($IsFolder -eq $true) {
-			Format-Output "-- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
+			Write-Host "$($ComputerName): -- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
 		}
 		else {
-			Format-Output "-- Removed App File '$(Split-Path -Path $FolderName -Leaf)'"
+			Write-Host "$($ComputerName): -- Removed App File '$(Split-Path -Path $FolderName -Leaf)'"
 		}
 	}
 }
@@ -120,10 +114,10 @@ function Remove-AmdFolders {
 			if ($Null -ne (Get-Process "$($Proc)*")) {
 				try {
 					Stop-Process -Name $Proc -Force
-					Format-Output "-- Stopped process '$($Proc)'"
+					Write-Host "$($ComputerName): -- Stopped process '$($Proc)'"
 				}
 				catch {
-					Format-Output "-- Failed to stop process '$($Proc)'"
+					Write-Host "$($ComputerName): -- Failed to stop process '$($Proc)'"
 				}
 			}
 		}
@@ -137,12 +131,12 @@ function Remove-AmdFolders {
 			if ($Null -ne (Get-Service $Serv -ErrorAction SilentlyContinue)) {
 				try {
 					Stop-Service -Name $Serv
-					Format-Output "-- Stopped service '$($Serv)'"
+					Write-Host "$($ComputerName): -- Stopped service '$($Serv)'"
 					sc.exe delete $Serv | Out-Null
-					Format-Output "-- Removed service '$($Serv)'"
+					Write-Host "$($ComputerName): -- Removed service '$($Serv)'"
 				}
 				catch {
-					Format-Output "-- Failed to stop or remove service '$($Serv)'"
+					Write-Host "$($ComputerName): -- Failed to stop or remove service '$($Serv)'"
 				}
 			}
 		}
@@ -158,23 +152,23 @@ function Remove-AmdFolders {
 				Remove-Item -Path $Path -Recurse -Force -ErrorAction SilentlyContinue
 				if ((Test-Path -Path $Path) -eq $True) {
 					if ($Path.Length -gt $MaxPathLen) {
-						Format-Output "-- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
+						Write-Host "$($ComputerName): -- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
 					}
 					else {
-						Format-Output "-- Failed to remove folder '$($Path)'"
+						Write-Host "$($ComputerName): -- Failed to remove folder '$($Path)'"
 					}
 					if ($Path -eq "C:\Program Files\AMD\") {
 						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
 						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0002\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
-						Format-Output "-- Removed 'DalDCELogFilePath' registry value"
+						Write-Host "$($ComputerName): -- Removed 'DalDCELogFilePath' registry value"
 					}
 				}
 				else {
 					if ($Path.Length -gt $MaxPathLen) {
-						Format-Output "-- Removed folder '$(Split-Path -Path $Path -Leaf)'"
+						Write-Host "$($ComputerName): -- Removed folder '$(Split-Path -Path $Path -Leaf)'"
 					}
 					else {
-						Format-Output "-- Removed folder '$($Path)'"
+						Write-Host "$($ComputerName): -- Removed folder '$($Path)'"
 					}
 				}
 			}
@@ -182,7 +176,7 @@ function Remove-AmdFolders {
 		}
 	}
 	catch {
-		Format-Output "-- Error caught in Remove-AmdFolders"
+		Write-Host "$($ComputerName): -- Error caught in Remove-AmdFolders"
 	}
 }
 
@@ -201,10 +195,10 @@ function Invoke-RemoveAppxPackage {
 		}
 	}
 	catch [TypeInitializationException]{
-		Format-Output -Text "-- Remove-AppxPackage failed. TypeInitializationException"
+		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. TypeInitializationException"
 	}
 	catch {
-		Format-Output -Text "-- Remove-AppxPackage failed. Unknown reason"
+		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. Unknown reason"
 	}
 }
 
@@ -216,7 +210,7 @@ function Remove-Package {
 
 	# if we get an empty name, don't do anything
 	if (($Null -eq $WindowsApp) -or ($Null -eq $WindowsApp.PackageName) -or ($WindowsApp.PackageName -eq '')) {
-		Format-Output "-- App name was null or empty"
+		Write-Host "$($ComputerName): -- App name was null or empty"
 		return @(0, 0)
 	}
 
@@ -243,7 +237,7 @@ function Remove-Package {
 			$InstallState = $Pkg.PackageUserInformation.InstallState
 			# pending removal, skip it
 			if ($InstallState -eq 'Installed(pending removal)') {
-				Format-Output "-- Pending Removal '$($Pkg.PackageFullName)'"
+				Write-Host "$($ComputerName): -- Pending Removal '$($Pkg.PackageFullName)'"
 				continue
 			}
 			$UserSid = $User.UserSecurityId.Sid
@@ -254,21 +248,21 @@ function Remove-Package {
 			# check if we have a user sid
 			if (($Null -eq $UserSid) -or ($UserSid -eq '')) {
 				# since we have no user sid, remove for all users
-				Format-Output "-- Removing '$($Pkg.PackageFullName)' for User"
+				Write-Host "$($ComputerName): -- Removing '$($Pkg.PackageFullName)' for User"
 				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $False
-				Format-Output "---- Unknown User"
+				Write-Host "$($ComputerName): ---- Unknown User"
 			}
 			else {
 				# otherwise, remove the package for the user sid
-				Format-Output "-- Removing '$($Pkg.PackageFullName)' for a single user"
+				Write-Host "$($ComputerName): -- Removing '$($Pkg.PackageFullName)' for a single user"
 				Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -User $UserSid -All $False
-				Format-Output "---- User '$($UserSid)'"
+				Write-Host "$($ComputerName): ---- User '$($UserSid)'"
 			}
 		}
 		# remove for all users
-		Format-Output "-- Removing '$($Pkg.PackageFullName)' for all users"
+		Write-Host "$($ComputerName): -- Removing '$($Pkg.PackageFullName)' for all users"
 		Invoke-RemoveAppxPackage -Package $Pkg.PackageFullName -All $True
-		Format-Output "-- Removed '$($Pkg.PackageFullName)'"
+		Write-Host "$($ComputerName): -- Removed '$($Pkg.PackageFullName)'"
 	}
 
 	Remove-AllFolders -Name $WindowsApp.PackageName
@@ -277,11 +271,11 @@ function Remove-Package {
 
 	$PackageResult = Get-InstalledPackage -Name $WindowsApp.PackageName -AllPackages $Global:AllPackages
 	if ($Null -eq $PackageResult) {
-		Format-Output "-- Verified '$($WindowsApp.PackageName)' was removed"
+		Write-Host "$($ComputerName): -- Verified '$($WindowsApp.PackageName)' was removed"
 		return @(0, 1)
 	}
 	else {
-		Format-Output "-- '$($WindowsApp.PackageName)' was NOT removed"
+		Write-Host "$($ComputerName): -- '$($WindowsApp.PackageName)' was NOT removed"
 		return @(0, 0)
 	}
 }
@@ -353,7 +347,7 @@ try {
 	$SkipCount = 0
 	$UninstallCount = 0
 
-	Format-Output "Connected"
+	Write-Host "$($ComputerName): Connected"
 
 	# services to stop for amd radeon
 	$AmdServices = @(
@@ -392,10 +386,10 @@ try {
 				$WindowsAppData = [WindowsApp]$WindowsApp
 				$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
 				if ($Null -ne $Package) {
-					Format-Output "Uninstalling $($WindowsAppData.PackageName)"
+					Write-Host "$($ComputerName): Uninstalling $($WindowsAppData.PackageName)"
 					$Result = Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
 					if ($Null -eq $Result) {
-						Format-Output "-- Null result for $($WindowsAppData.PackageName)"
+						Write-Host "$($ComputerName): -- Null result for $($WindowsAppData.PackageName)"
 					}
 					else {
 						$SkipCount += $Result[0]
@@ -407,7 +401,7 @@ try {
 	}
 
 	# try to remove all folders even if no packages were found
-	Format-Output "Removing Folders"
+	Write-Host "$($ComputerName): Removing Leftover Folders"
 	Remove-AllFolders -Name "NO APP NAME"
 
 	# update the registry to try and stop Windows from downloading the extra software packages
@@ -415,19 +409,19 @@ try {
 	
 	# run a hardware update cycle
 	if ($PSVersionTable.PSVersion.Major -lt 7) {
-		Format-Output "Running Hardware Inventory Cycle"
+		Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
 		Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
 	}
 	else {
-		Format-Output "Skipped Hardware Inventory Cycle due to PowerShell7"
+		Write-Host "$($ComputerName): Skipped Hardware Inventory Cycle due to PowerShell7 profile issue"
 	}
 	
 	# done, return our results
-	Format-Output "Done"
+	Write-Host "$($ComputerName): Done"
 	@($SkipCount, $UninstallCount)
 }
 catch {
-	Format-Output "-- Error caught in script. Check error file."
+	Write-Host "$($ComputerName): -- Error caught in script. Check error file."
 	Write-Error -Message "$($ComputerName): $($_)"
 	$Null
 }

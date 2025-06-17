@@ -4,37 +4,31 @@ $ComputerName = $env:computername
 $SkipCount = 0
 $UninstallCount = 0
 
-function Format-Output {
-	param ([string]$Text)
-	$Output = "[--|$($ComputerName)| $($Text)"
-	Write-Host $Output
-}
-
 try {
 	$ProductName = "Xerox Desktop Print Experience"
 	$UninstallVersionList = @("7.*")
 
-	Format-Output "Connected"
+	Write-Host "$($ComputerName): Connected"
 
 	foreach ($UninstallCurrentVersion in $UninstallVersionList) {
-		Format-Output "Getting Identifying Number and Version"
+		Write-Host "$($ComputerName): Getting Identifying Number and Version"
 		$X64 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
 		$X32 = "HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
 		$Software = Get-ItemProperty -Path $X64, $X32
 		$INum = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).PSChildName
 		$Version = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).DisplayVersion
-		Format-Output "--INum: $($INum)"
-		Format-Output "--Version: '$($Version)'"
+		Write-Host "$($ComputerName): --INum: $($INum)"
+		Write-Host "$($ComputerName): --Version: '$($Version)'"
 
 		if ($Version -like $UninstallCurrentVersion) {
 			if ($INum -ne "") {
-				Format-Output "Uninstalling '$($Version)'"
+				Write-Host "$($ComputerName): Uninstalling '$($Version)'"
 				$cmd = "msiexec.exe /x $($INum) /quiet /norestart"
 				#Write-Host $cmd
 				cmd /c $cmd
 			}
 
-			Format-Output "Checking Installed Version"
+			Write-Host "$($ComputerName): Checking Installed Version"
 			$Software = Get-ItemProperty -Path $X64, $X32
 			$Version = ($Software | Where-Object { $_.DisplayName -like "$($ProductName)*" }).DisplayVersion
 			if ($Null -ne $Version) {
@@ -43,7 +37,7 @@ try {
 			else {
 				$Version = ""
 			}
-			Format-Output "--Version: '$($Version)'"
+			Write-Host "$($ComputerName): --Version: '$($Version)'"
 			if ($Version -ne "") {
 				$ErrString = "$($ComputerName): Failed To Uninstall '$($ProductName) v$($UninstallCurrentVersion)'"
 				Format-Output $ErrString
@@ -58,19 +52,19 @@ try {
 		}
 		else {
 			# nothing to do, correct version found
-			Format-Output "Skipping $($UninstallCurrentVersion), nothing to uninstall"
+			Write-Host "$($ComputerName): Skipping $($UninstallCurrentVersion), nothing to uninstall"
 			# update our count
 			$SkipCount += 1
 		}
 	}
 
-	Format-Output "Running Hardware Inventory Cycle"
+	Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
 	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
 	
-	Format-Output "Done"
+	Write-Host "$($ComputerName): Done"
 }
 catch {
-	Format-Output "Error in script"
+	Write-Host "$($ComputerName): Error in script"
 	Format-Output $_
 	Write-Error $_
 }

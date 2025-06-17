@@ -2,14 +2,8 @@
 
 $ComputerName = $env:computername
 
-function Format-Output {
-	param ([string]$Text)
-	$Output = "[--|{0}| {1}" -f $ComputerName, $Text
-	Write-Host $Output
-}
-
 try {
-	Format-Output "Connected"
+	Write-Host "$($ComputerName): Connected"
 	
 	# check if zoom is running
 	$ZoomProcess = Get-Process -Name Zoom -ErrorAction SilentlyContinue
@@ -22,7 +16,7 @@ try {
 		# if the count is non-zero, zoom is in a meeting
 		if ($ConnCount -gt 0) {
 			# write a message
-			Format-Output "-- Active Zoom meeting detected!"
+			Write-Host "$($ComputerName): -- Active Zoom meeting detected!"
 			# and exit
 			return
 		}
@@ -47,7 +41,7 @@ try {
 		if ((Test-Path -Path $ZoomRoamingPath -PathType Container) -eq $True) {
 			# if the path exists, then remove it
 			Remove-Item -Path $ZoomRoamingPath -Recurse -Force
-			Format-Output "-- Removed roaming Zoom folder '$($User)'"
+			Write-Host "$($ComputerName): -- Removed roaming Zoom folder '$($User)'"
 		}
 
 		# combine user folder and zoom folder
@@ -56,7 +50,7 @@ try {
 		if ((Test-Path -Path $ZoomLocalPath -PathType Container) -eq $True) {
 			# if the path exists, then remove it
 			Remove-Item -Path $ZoomLocalPath -Recurse -Force
-			Format-Output "-- Removed local Zoom folder '$($User)'"
+			Write-Host "$($ComputerName): -- Removed local Zoom folder '$($User)'"
 		}
 
 		# create full user start menu folder path
@@ -65,7 +59,7 @@ try {
 		if ((Test-Path -Path $ZoomStartPath -PathType Container) -eq $True) {
 			# if the path exists, then remove it
 			Remove-Item -Path $ZoomStartPath -Recurse -Force
-			Format-Output "-- Removed start menu Zoom folder '$($User)'"
+			Write-Host "$($ComputerName): -- Removed start menu Zoom folder '$($User)'"
 		}
 
 		# combine user folder and downloaded zoom file
@@ -74,7 +68,7 @@ try {
 		if ((Test-Path -Path $ZoomFile -PathType Leaf) -eq $True) {
 			# if the file exists, then remove it
 			Remove-Item -Path $ZoomFile -Force
-			Format-Output "-- Removed Zoom download file '$($User)'"
+			Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
 		}
 
 		# combine system task folder with zoom task name
@@ -83,18 +77,18 @@ try {
 		if ((Test-Path -Path $ZoomTask -PathType Leaf) -eq $True) {
 			# if the file exists, then remove it
 			Remove-Item -Path $ZoomTask -Force
-			Format-Output "-- Removed Zoom task file"
+			Write-Host "$($ComputerName): -- Removed Zoom task file"
 		}
 	}
 	
 	# trigger sccm scan
-	Format-Output "Triggering Hardware Inventory Cycle"
+	Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
 	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
 	
-	Format-Output "Done"
+	Write-Host "$($ComputerName): Done"
 }
 catch {
-	Format-Output "Error in script"
-	Format-Output $_
+	Write-Host "$($ComputerName): Error in script"
+	Write-Host "$($ComputerName): $($_)"
 	Write-Error $_
 }
