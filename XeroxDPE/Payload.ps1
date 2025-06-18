@@ -40,12 +40,12 @@ try {
 			Write-Host "$($ComputerName): --Version: '$($Version)'"
 			if ($Version -ne "") {
 				$ErrString = "$($ComputerName): Failed To Uninstall '$($ProductName) v$($UninstallCurrentVersion)'"
-				Format-Output $ErrString
+				Write-Host "$($ComputerName): $($ErrString)"
 				Write-Error $ErrString
 			}
 			else {
 				# software was removed
-				Format-Output  "--Version '$($UninstallCurrentVersion)' Removed"
+				Write-Host "$($ComputerName): --Version '$($UninstallCurrentVersion)' Removed"
 				# update our count
 				$UninstallCount += 1
 			}
@@ -65,7 +65,7 @@ try {
 }
 catch {
 	Write-Host "$($ComputerName): Error in script"
-	Format-Output $_
+	Write-Host "$($ComputerName): $($_)"
 	Write-Error $_
 }
 

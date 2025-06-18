@@ -82,42 +82,6 @@ function Get-UniqueArrayFromFile {
 	return $ComputerSet.Keys | Sort-Object
 }
 
-# our custom line format for script output
-function Format-Line {
-	# parameters
-	param (
-	[Parameter(Mandatory=$True)][string]$Text,
-	[string]$Computer
-	)
-	# check if we were given a computer name
-	if ($Computer -ne "") {
-		# format the line with the our text and computer
-		return "[--|$($Computer)| $($Text)"
-	}
-	else {
-		# otherwise, format the line with the our text
-		return "[--|$($Text)|"
-	}
-}
-
-# write a colored line to the host
-function Write-ColorLine {
-	# parameters
-	param (
-		[Parameter(Mandatory=$True)][string]$Text,
-		[Parameter(Mandatory=$True)][string]$Color
-	)
-	# check if our color is in the color enum
-	if ([ConsoleColor]::IsDefined([ConsoleColor], $Color)) {	
-		# color exists, write our colored line
-		Write-Host $Text -ForegroundColor $Color
-	}
-	else {
-		# color doesn't exist, write our line without color
-		Write-Host $Text
-	}
-}
-
 # get an array of all our computers in AD
 function Get-AdComputerArray {
 	param (
@@ -217,12 +181,12 @@ function Find-Computer {
 	# check if our resolved name is null
 	if ($Null -eq $DnsName) {
 		# if true, write a message
-		Write-ColorLine -Text (Format-Line -Text "Unable to resolve computer name from IP address" -Computer $ComputerName) -Color Red
+		Write-Host "$($ComputerName) Unable to resolve computer name from IP address" -ForegroundColor Red
 	}
 	else {
 		# otherwise, check if our computer name matches the dns name
 		if ($DnsName[0] -ne $ComputerName) {
-			Write-ColorLine -Text (Format-Line -Text "DNS mismatch (DNS: $($DnsName[0]), CN: $($ComputerName))" -Computer $ComputerName) -Color Red
+			Write-Host "$($ComputerName) DNS mismatch (DNS: $($DnsName[0]), CN: $($ComputerName))" -ForegroundColor Red
 			# return the dns error
 			return @($Latency, $DnsMismatch)
 		}
@@ -245,7 +209,7 @@ $NotInAd = 'NotInAd'
 
 # test if our input folder exists
 if ((Test-Path -Path $InputPath) -eq $False) {
-	Write-ColorLine -Text "Error: Input folder not found." -Color Red
+	Write-Host "Error: Input folder not found." -ForegroundColor Red
 	return
 }
 
@@ -276,12 +240,12 @@ $ComputerListFile = Join-Path -Path $InputPath -ChildPath "ComputerList.txt"
 
 # test if our required payload file exists
 if ((Test-Path -Path $PayloadFile) -eq $False) {
-	Write-ColorLine -Text "Error: Payload file not found." -Color Red
+	Write-Host "Error: Payload file not found." -ForegroundColor Red
 	return
 }
 # test if our required computer list file exists
 if ((Test-Path -Path $ComputerListFile) -eq $False) {
-	Write-ColorLine -Text "Error: Computer list file not found." -Color Red
+	Write-Host "Error: Computer list file not found." -ForegroundColor Red
 	return
 }
 
@@ -303,7 +267,7 @@ else {
 	$Plural = "computers"
 }
 $StartString = "`nRunning '$($PayloadFile)' on $($ComputerList.Count) $($Plural)"
-Write-ColorLine -Text $StartString -Color Green
+Write-Host $StartString -ForegroundColor Green
 
 # clear the error list so we can write only our errors
 $Error.Clear()
@@ -339,11 +303,9 @@ foreach ($Computer in $ComputerList) {
 		# update our progress
 		$PComplete = ($ComputerCount / $TotalComputers) * 100
 		$Status = "$ComputerCount/$TotalComputers Complete"
-		$Activity = Format-Line -Text "Progress   "
+		$Activity = "Progress"
 		Write-Progress -Activity $Activity -Status $Status -PercentComplete $PComplete
-		# insert empty line
-		Write-Host
-		Write-ColorLine -Text (Format-Line -Text "Trying To Connect" -Computer $Computer) -Color Yellow
+		Write-Host "`n$($Computer): Trying To Connect" -ForegroundColor Yellow
 		# set our parameters for our invoke command
 		$Parameters = @{
 			ComputerName	= $Computer
@@ -364,7 +326,7 @@ foreach ($Computer in $ComputerList) {
 		if (($PingLatency -ge 0) -and ($PingStatus -ne 'TimedOut')) {
 			# check if we did not have a dns mismatch
 			if ($PingStatus -ne $DnsMismatch) {
-				Write-ColorLine -Text (Format-Line -Text "Ping ($($PingStatus))" -Computer $Computer) -Color Green
+				Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Green
 				# run the script on the target computer if we can ping the computer
 				$InvokeReturn = Invoke-Command @Parameters
 				# check if we got anything back from the invoke command
@@ -385,7 +347,7 @@ foreach ($Computer in $ComputerList) {
 					# we got a null value from our invoke-command, add the computer to the error array
 					$ErrorArray += $Computer
 					# write the error message
-					Write-ColorLine -Text (Format-Line -Text "No return value from Payload script" -Computer $Computer) -Color Red
+					Write-Host "$($Computer) No return value from Payload script" -ForegroundColor Red
 				}
 			}
 			else {
@@ -394,7 +356,7 @@ foreach ($Computer in $ComputerList) {
 			}
 		}
 		else {
-			Write-ColorLine -Text (Format-Line -Text "Ping ($($PingStatus))" -Computer $Computer) -Color Red
+			Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Red
 			# otherwise, write an error
 			Write-Error -Message "$($Computer): Unable to ping $($Computer) - ($($PingStatus), $($PingLatency))" -Category ConnectionError -ErrorAction SilentlyContinue
 		}
@@ -406,7 +368,7 @@ foreach ($Computer in $ComputerList) {
 				$SuccessArray += $Computer
 			}
 			else {
-				Write-ColorLine -Text "Error: $($Computer)" -Color Yellow
+				Write-Host "Error: $($Computer)" -ForegroundColor Yellow
 				# if the script added an error, add the computer to our success array
 				$ErrorArray += $Computer
 			}
@@ -435,15 +397,14 @@ $CountsArray = @(
 
 # write our counts
 Write-Host $CountsArray[0]
-Write-ColorLine -Text $CountsArray[1] -Color Yellow
-Write-ColorLine -Text $CountsArray[2] -Color Green
-Write-ColorLine -Text $CountsArray[3] -Color Cyan
-Write-ColorLine -Text $CountsArray[4] -Color Blue
-Write-ColorLine -Text $CountsArray[5] -Color Red
+Write-Host $CountsArray[1] -ForegroundColor Yellow
+Write-Host $CountsArray[2] -ForegroundColor Green
+Write-Host $CountsArray[3] -ForegroundColor Cyan
+Write-Host $CountsArray[4] -ForegroundColor Blue
+Write-Host $CountsArray[5] -ForegroundColor Red
 
 # write our output files
-Write-Host # empty line
-Write-ColorLine -Text 'Writing Output Files' -Color Yellow
+Write-Host "`nWriting Output Files" -ForegroundColor Yellow
 
 # rename our computer list file so we can write a new one
 $DateString = Get-Date -Format "MM.dd.yyyy-HH.mm.ss"

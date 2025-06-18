@@ -225,7 +225,7 @@ function Remove-Package {
 
 	# if packages is null, we have nothing to do. remove any known folders
 	if ($Null -eq $Packages) {
-		Format-Output '-- Packages is NULL, removing folders'
+		Write-Host "$($ComputerName): -- Packages is NULL, removing folders"
 		Remove-AllFolders -Name $WindowsApp.PackageName
 		return @(0, 0)
 	}
