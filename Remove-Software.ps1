@@ -3,7 +3,7 @@
 # parameters
 param (
 	# the folder that contains the payload and computer list
-	[Parameter(Mandatory=$True)][string]$InputPath,
+	[Parameter(Mandatory=$True)][string[]]$InputPath,
 	# if enabled, remote sessions will be started with powershell v7
 	[switch]$PowerShell7
 )
@@ -207,237 +207,241 @@ $DnsMismatch = 'DnsMismatch'
 # if our computer is not in AD, use this status
 $NotInAd = 'NotInAd'
 
-# test if our input folder exists
-if ((Test-Path -Path $InputPath) -eq $False) {
-	Write-Host "Error: Input folder not found." -ForegroundColor Red
-	return
-}
+# do the work for each input path
+foreach ($IPath in $InputPath) {
 
-# log folder
-$LogFolderName = 'Logs'
-$LogFolder = Join-Path -Path $InputPath -ChildPath $LogFolderName
+	# test if our input folder exists
+	if ((Test-Path -Path $IPath) -eq $False) {
+		Write-Host "Error: Input folder not found." -ForegroundColor Red
+		return
+	}
 
-# test if our log folder exists
-if ((Test-Path -Path $LogFolder) -eq $False) {
-	New-Item -Path $LogFolder -ItemType "directory" | Out-Null
-}
+	# log folder
+	$LogFolderName = 'Logs'
+	$LogFolder = Join-Path -Path $IPath -ChildPath $LogFolderName
 
-# old log folder
-$OldLogFolderName = 'Old'
-$OldLogFolder = Join-Path -Path $LogFolder -ChildPath $OldLogFolderName
+	# test if our log folder exists
+	if ((Test-Path -Path $LogFolder) -eq $False) {
+		New-Item -Path $LogFolder -ItemType "directory" | Out-Null
+	}
 
-# test if our old log folder exists
-if ((Test-Path -Path $OldLogFolder) -eq $False) {
-	New-Item -Path $OldLogFolder -ItemType "directory" | Out-Null
-}
+	# old log folder
+	$OldLogFolderName = 'Old'
+	$OldLogFolder = Join-Path -Path $LogFolder -ChildPath $OldLogFolderName
 
-# file to output errors
-$ErrorFile = Join-Path -Path $LogFolder -ChildPath "Errors.txt"
-# file that contains our script
-$PayloadFile = Join-Path -Path $InputPath -ChildPath "Payload.ps1"
-# file that contains our computer list
-$ComputerListFile = Join-Path -Path $InputPath -ChildPath "ComputerList.txt"
+	# test if our old log folder exists
+	if ((Test-Path -Path $OldLogFolder) -eq $False) {
+		New-Item -Path $OldLogFolder -ItemType "directory" | Out-Null
+	}
 
-# test if our required payload file exists
-if ((Test-Path -Path $PayloadFile) -eq $False) {
-	Write-Host "Error: Payload file not found." -ForegroundColor Red
-	return
-}
-# test if our required computer list file exists
-if ((Test-Path -Path $ComputerListFile) -eq $False) {
-	Write-Host "Error: Computer list file not found." -ForegroundColor Red
-	return
-}
+	# file to output errors
+	$ErrorFile = Join-Path -Path $LogFolder -ChildPath "Errors.txt"
+	# file that contains our script
+	$PayloadFile = Join-Path -Path $IPath -ChildPath "Payload.ps1"
+	# file that contains our computer list
+	$ComputerListFile = Join-Path -Path $IPath -ChildPath "ComputerList.txt"
 
-# an array to collect the computer names with an error
-$ErrorArray = @()
+	# test if our required payload file exists
+	if ((Test-Path -Path $PayloadFile) -eq $False) {
+		Write-Host "Error: Payload file not found." -ForegroundColor Red
+		return
+	}
+	# test if our required computer list file exists
+	if ((Test-Path -Path $ComputerListFile) -eq $False) {
+		Write-Host "Error: Computer list file not found." -ForegroundColor Red
+		return
+	}
 
-# an array to collect the computer names that succeeded
-$SuccessArray = @()
+	# an array to collect the computer names with an error
+	$ErrorArray = @()
 
-# get the list of computers from a text file
-$ComputerList = Get-UniqueArrayFromFile -FilePath $ComputerListFile
+	# an array to collect the computer names that succeeded
+	$SuccessArray = @()
 
-# write our starting status
-$Plural = ""
-if ($ComputerList.Count -eq 1) {
-	$Plural = "computer"
-}
-else {
-	$Plural = "computers"
-}
-$StartString = "`nRunning '$($PayloadFile)' on $($ComputerList.Count) $($Plural)"
-Write-Host $StartString -ForegroundColor Green
+	# get the list of computers from a text file
+	$ComputerList = Get-UniqueArrayFromFile -FilePath $ComputerListFile
 
-# clear the error list so we can write only our errors
-$Error.Clear()
+	# write our starting status
+	$Plural = ""
+	if ($ComputerList.Count -eq 1) {
+		$Plural = "computer"
+	}
+	else {
+		$Plural = "computers"
+	}
+	$StartString = "`nRunning '$($PayloadFile)' on $($ComputerList.Count) $($Plural)"
+	Write-Host $StartString -ForegroundColor Green
 
-# read our config file
-Get-ConfigFromJson
+	# clear the error list so we can write only our errors
+	$Error.Clear()
 
-# count variables
-$TotalComputers = $ComputerList.Count
-$ComputerCount = 0
-$SkipCount = 0
-$UninstallCount = 0
+	# read our config file
+	Get-ConfigFromJson
 
-# percent complete
-$PComplete = 0.0
+	# count variables
+	$TotalComputers = $ComputerList.Count
+	$ComputerCount = 0
+	$SkipCount = 0
+	$UninstallCount = 0
 
-# flush our dns
-Clear-DnsClientCache
+	# percent complete
+	$PComplete = 0.0
 
-# change our default settings for our remote session used by invoke-command
-$PssOptions = New-PSSessionOption -MaxConnectionRetryCount 0 -OpenTimeout 30000 -OperationTimeout 30000
+	# flush our dns
+	Clear-DnsClientCache
 
-# get an array of AD computers
-$ADComputerArray = Get-AdComputerArray -Domains $Global:ConfigDomains -Filter $Global:ConfigFilter
+	# change our default settings for our remote session used by invoke-command
+	$PssOptions = New-PSSessionOption -MaxConnectionRetryCount 0 -OpenTimeout 30000 -OperationTimeout 30000
 
-# loop through list of computers
-foreach ($Computer in $ComputerList) {
-	try {
-		# check of we have a computer name
-		if (($Null -eq $Computer) -or ($Computer -eq "")) { continue }
-		# get the last error in the error variable
-		$LastError = $Error[0]
-		# update our progress
-		$PComplete = ($ComputerCount / $TotalComputers) * 100
-		$Status = "$ComputerCount/$TotalComputers Complete"
-		$Activity = "Progress"
-		Write-Progress -Activity $Activity -Status $Status -PercentComplete $PComplete
-		Write-Host "`n$($Computer): Trying To Connect" -ForegroundColor Yellow
-		# set our parameters for our invoke command
-		$Parameters = @{
-			ComputerName	= $Computer
-			FilePath		= $PayloadFile
-			ErrorAction		= "SilentlyContinue"
-			SessionOption	= $PssOptions
-		}
-		if ($PowerShell7 -eq $True) {
-			$Parameters['ConfigurationName'] = "PowerShell.7"
-		}
-		# get our ping data
-		$PingData = Find-Computer -ADArray $ADComputerArray -ComputerName $Computer
-		# get the result (boolean)
-		$PingLatency = $PingData[0]
-		# get the ping status (string)
-		$PingStatus = $PingData[1]
-		# check if we can ping the computer
-		if (($PingLatency -ge 0) -and ($PingStatus -ne 'TimedOut')) {
-			# check if we did not have a dns mismatch
-			if ($PingStatus -ne $DnsMismatch) {
-				Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Green
-				# run the script on the target computer if we can ping the computer
-				$InvokeReturn = Invoke-Command @Parameters
-				# check if we got anything back from the invoke command
-				if ($Null -ne $InvokeReturn) {
-					# should be @($SkipCount, $UninstallCount)
-					# check if our skip count is an int
-					if ($InvokeReturn[0] -is [int]) {
-						# update our count
-						$SkipCount += $InvokeReturn[0]
+	# get an array of AD computers
+	$ADComputerArray = Get-AdComputerArray -Domains $Global:ConfigDomains -Filter $Global:ConfigFilter
+
+	# loop through list of computers
+	foreach ($Computer in $ComputerList) {
+		try {
+			# check of we have a computer name
+			if (($Null -eq $Computer) -or ($Computer -eq "")) { continue }
+			# get the last error in the error variable
+			$LastError = $Error[0]
+			# update our progress
+			$PComplete = ($ComputerCount / $TotalComputers) * 100
+			$Status = "$ComputerCount/$TotalComputers Complete"
+			$Activity = "Progress"
+			Write-Progress -Activity $Activity -Status $Status -PercentComplete $PComplete
+			Write-Host "`n$($Computer): Trying To Connect" -ForegroundColor Yellow
+			# set our parameters for our invoke command
+			$Parameters = @{
+				ComputerName	= $Computer
+				FilePath		= $PayloadFile
+				ErrorAction		= "SilentlyContinue"
+				SessionOption	= $PssOptions
+			}
+			if ($PowerShell7 -eq $True) {
+				$Parameters['ConfigurationName'] = "PowerShell.7"
+			}
+			# get our ping data
+			$PingData = Find-Computer -ADArray $ADComputerArray -ComputerName $Computer
+			# get the result (boolean)
+			$PingLatency = $PingData[0]
+			# get the ping status (string)
+			$PingStatus = $PingData[1]
+			# check if we can ping the computer
+			if (($PingLatency -ge 0) -and ($PingStatus -ne 'TimedOut')) {
+				# check if we did not have a dns mismatch
+				if ($PingStatus -ne $DnsMismatch) {
+					Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Green
+					# run the script on the target computer if we can ping the computer
+					$InvokeReturn = Invoke-Command @Parameters
+					# check if we got anything back from the invoke command
+					if ($Null -ne $InvokeReturn) {
+						# should be @($SkipCount, $UninstallCount)
+						# check if our skip count is an int
+						if ($InvokeReturn[0] -is [int]) {
+							# update our count
+							$SkipCount += $InvokeReturn[0]
+						}
+						# check if our uninstall count is an int
+						if ($InvokeReturn[1] -is [int]) {
+							# update our count
+							$UninstallCount += $InvokeReturn[1]
+						}
 					}
-					# check if our uninstall count is an int
-					if ($InvokeReturn[1] -is [int]) {
-						# update our count
-						$UninstallCount += $InvokeReturn[1]
+					else {
+						# we got a null value from our invoke-command, add the computer to the error array
+						$ErrorArray += $Computer
+						# write the error message
+						Write-Host "$($Computer) No return value from Payload script" -ForegroundColor Red
 					}
 				}
 				else {
-					# we got a null value from our invoke-command, add the computer to the error array
-					$ErrorArray += $Computer
-					# write the error message
-					Write-Host "$($Computer) No return value from Payload script" -ForegroundColor Red
+					# otherwise, write an error
+					Write-Error -Message "$($Computer): DNS mismatch error" -Category ConnectionError -ErrorAction SilentlyContinue
 				}
 			}
 			else {
+				Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Red
 				# otherwise, write an error
-				Write-Error -Message "$($Computer): DNS mismatch error" -Category ConnectionError -ErrorAction SilentlyContinue
+				Write-Error -Message "$($Computer): Unable to ping $($Computer) - ($($PingStatus), $($PingLatency))" -Category ConnectionError -ErrorAction SilentlyContinue
 			}
-		}
-		else {
-			Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Red
-			# otherwise, write an error
-			Write-Error -Message "$($Computer): Unable to ping $($Computer) - ($($PingStatus), $($PingLatency))" -Category ConnectionError -ErrorAction SilentlyContinue
-		}
-		# check if our computer is in AD before adding to either array
-		if ($PingStatus -ne $NotInAd) {
-			# determine if the last computer was a success or error
-			if ($LastError -eq $Error[0]) {
-				# if the script finished without adding an error, add the computer to our success array
-				$SuccessArray += $Computer
+			# check if our computer is in AD before adding to either array
+			if ($PingStatus -ne $NotInAd) {
+				# determine if the last computer was a success or error
+				if ($LastError -eq $Error[0]) {
+					# if the script finished without adding an error, add the computer to our success array
+					$SuccessArray += $Computer
+				}
+				else {
+					Write-Host "Error: $($Computer)" -ForegroundColor Yellow
+					# if the script added an error, add the computer to our success array
+					$ErrorArray += $Computer
+				}
 			}
-			else {
-				Write-Host "Error: $($Computer)" -ForegroundColor Yellow
-				# if the script added an error, add the computer to our success array
-				$ErrorArray += $Computer
-			}
+			# increment our count
+			$ComputerCount += 1
 		}
-		# increment our count
-		$ComputerCount += 1
+		catch {
+			Write-Output "Caught Error"
+			Write-Output "$($_)"
+			Write-Host ($_ | Select-Object -Property *)
+			# add the computer to our error array if an error was caught
+			$ErrorArray += $Computer
+		}
 	}
-	catch {
-		Write-Output "Caught Error"
-		Write-Output "$($_)"
-		Write-Host ($_ | Select-Object -Property *)
-		# add the computer to our error array if an error was caught
-		$ErrorArray += $Computer
-	}
+
+	# create our counts array to output to the console and a file
+	$CountsArray = @(
+		"`nResults:"
+		"    Total: $($TotalComputers)"
+		"  Success: $($SuccessArray.Count)"
+		"     Skip: $($SkipCount)"
+		"Uninstall: $($UninstallCount)"
+		"    Error: $($ErrorArray.Count)"
+	)
+
+	# write our counts
+	Write-Host $CountsArray[0]
+	Write-Host $CountsArray[1] -ForegroundColor Yellow
+	Write-Host $CountsArray[2] -ForegroundColor Green
+	Write-Host $CountsArray[3] -ForegroundColor Cyan
+	Write-Host $CountsArray[4] -ForegroundColor Blue
+	Write-Host $CountsArray[5] -ForegroundColor Red
+
+	# write our output files
+	Write-Host "`nWriting Output Files" -ForegroundColor Yellow
+
+	# rename our computer list file so we can write a new one
+	$DateString = Get-Date -Format "MM.dd.yyyy-HH.mm.ss"
+	# get the file name for our computer list
+	$ComputerListLeaf = Split-Path -Path $ComputerListFile -Leaf
+	# create a new file name for our old file
+	$OldComputerListFile = "$($ComputerListLeaf.Replace('.txt', ''))-$($DateString).old"
+	# create the full path for our old computer list file
+	$OldComputerListFile = Join-Path -Path $OldLogFolder -ChildPath $OldComputerListFile
+	# move our file
+	Move-Item -Path $ComputerListFile -Destination $OldComputerListFile
+	Write-Host "Old Computer List: '$($OldComputerListFile)'"
+
+	# output computer names that had the script finish without errors
+	$ComputerSuccessFile = Join-Path -Path $LogFolder -ChildPath "ComputerSuccess.txt"
+	Out-File -FilePath $ComputerSuccessFile -InputObject ($SuccessArray | Get-Unique)
+	Write-Host "     Success List: '$($ComputerSuccessFile)'"
+
+	# output computer names that had an error during the script
+	$ComputerErrorFile = Join-Path -Path $LogFolder -ChildPath "ComputerError.txt"
+	Out-File -FilePath $ComputerErrorFile -InputObject ($ErrorArray | Get-Unique)
+	Write-Host "       Error List: '$($ComputerErrorFile)'"
+
+	# write our new computer list file using our error list for the next run
+	Out-File -FilePath $ComputerListFile -InputObject ($ErrorArray | Get-Unique)
+	Write-Host "New Computer List: '$($ComputerListFile)'"
+
+	# output our errors encountered during the script
+	Out-File -FilePath $ErrorFile -InputObject $Error
+	Write-Host "           Errors: '$($ErrorFile)'"
+
+	# write log file
+	$DateString = Get-Date -Format "MM.dd.yyyy-HH.mm.ss"
+	$ResultsFile = Join-Path -Path $OldLogFolder -ChildPath "Results-$($DateString).txt"
+	Out-File -FilePath $ResultsFile -InputObject $CountsArray
+	Write-Host "          Results: '$($ResultsFile)'`n"
 }
-
-# create our counts array to output to the console and a file
-$CountsArray = @(
-	"`nResults:"
-	"    Total: $($TotalComputers)"
-	"  Success: $($SuccessArray.Count)"
-	"     Skip: $($SkipCount)"
-	"Uninstall: $($UninstallCount)"
-	"    Error: $($ErrorArray.Count)"
-)
-
-# write our counts
-Write-Host $CountsArray[0]
-Write-Host $CountsArray[1] -ForegroundColor Yellow
-Write-Host $CountsArray[2] -ForegroundColor Green
-Write-Host $CountsArray[3] -ForegroundColor Cyan
-Write-Host $CountsArray[4] -ForegroundColor Blue
-Write-Host $CountsArray[5] -ForegroundColor Red
-
-# write our output files
-Write-Host "`nWriting Output Files" -ForegroundColor Yellow
-
-# rename our computer list file so we can write a new one
-$DateString = Get-Date -Format "MM.dd.yyyy-HH.mm.ss"
-# get the file name for our computer list
-$ComputerListLeaf = Split-Path -Path $ComputerListFile -Leaf
-# create a new file name for our old file
-$OldComputerListFile = "$($ComputerListLeaf.Replace('.txt', ''))-$($DateString).old"
-# create the full path for our old computer list file
-$OldComputerListFile = Join-Path -Path $OldLogFolder -ChildPath $OldComputerListFile
-# move our file
-Move-Item -Path $ComputerListFile -Destination $OldComputerListFile
-Write-Host "Old Computer List: '$($OldComputerListFile)'"
-
-# output computer names that had the script finish without errors
-$ComputerSuccessFile = Join-Path -Path $LogFolder -ChildPath "ComputerSuccess.txt"
-Out-File -FilePath $ComputerSuccessFile -InputObject ($SuccessArray | Get-Unique)
-Write-Host "     Success List: '$($ComputerSuccessFile)'"
-
-# output computer names that had an error during the script
-$ComputerErrorFile = Join-Path -Path $LogFolder -ChildPath "ComputerError.txt"
-Out-File -FilePath $ComputerErrorFile -InputObject ($ErrorArray | Get-Unique)
-Write-Host "       Error List: '$($ComputerErrorFile)'"
-
-# write our new computer list file using our error list for the next run
-Out-File -FilePath $ComputerListFile -InputObject ($ErrorArray | Get-Unique)
-Write-Host "New Computer List: '$($ComputerListFile)'"
-
-# output our errors encountered during the script
-Out-File -FilePath $ErrorFile -InputObject $Error
-Write-Host "           Errors: '$($ErrorFile)'"
-
-# write log file
-$DateString = Get-Date -Format "MM.dd.yyyy-HH.mm.ss"
-$ResultsFile = Join-Path -Path $OldLogFolder -ChildPath "Results-$($DateString).txt"
-Out-File -FilePath $ResultsFile -InputObject $CountsArray
-Write-Host "          Results: '$($ResultsFile)'`n"
