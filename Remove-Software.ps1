@@ -1,6 +1,7 @@
 #Requires -RunAsAdministrator
 
-# parameters
+#region PARAMETERS
+
 param (
 	# the folder that contains the payload and computer list
 	[Parameter(Mandatory=$True)][string[]]$InputPath,
@@ -8,12 +9,18 @@ param (
 	[switch]$PowerShell7
 )
 
+#endregion PARAMETERS
+#region PROPERTIES
+
 # the name of our config json file
 $Global:JsonConfigFileName = 'config.json'
 
 # these properties are loaded from the config file
 $Global:ConfigDomains = $null
 $Global:ConfigFilter = ""
+
+#endregion PARAMETERS
+#region FUNCTIONS
 
 function Get-ConfigFromJson {
 	# check if our config file exists
@@ -195,8 +202,8 @@ function Find-Computer {
 	return @($Latency, $Status)
 }
 
-# stop on errors
-#$ErrorActionPreference = "Stop"
+#endregion FUNCTIONS
+#region MAIN
 
 # if our status is empty, use this status
 $NoStatus = 'NoStatus'
@@ -260,6 +267,14 @@ foreach ($IPath in $InputPath) {
 
 	# get the list of computers from a text file
 	$ComputerList = Get-UniqueArrayFromFile -FilePath $ComputerListFile
+
+	# check if our list contains any computers
+	if ($ComputerList.Count -le 0) {
+		# write our message
+		Write-Host "Computer list is empty. Skipping '$($PayloadFile)'." -ForegroundColor DarkCyan
+		# skip this payload
+		continue
+	}
 
 	# write our starting status
 	$Plural = ""
@@ -445,3 +460,5 @@ foreach ($IPath in $InputPath) {
 	Out-File -FilePath $ResultsFile -InputObject $CountsArray
 	Write-Host "          Results: '$($ResultsFile)'`n"
 }
+
+#endregion MAIN
