@@ -80,6 +80,7 @@ try {
 			if ($EdgeFile.FullName -contains "Zoom_cm") {
 				# delete the file
 				Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
+				Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
 			}
 		}
 
