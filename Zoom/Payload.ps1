@@ -71,19 +71,22 @@ try {
 			Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
 		}
 
-		# get all files in the ms edge downloads folder
-		$EdgeDownloadFolder = Join-Path -Path $UserPath -ChildPath '\AppData\Local\Temp\1\MicrosoftEdgeDownloads'
-		$EdgeDownloadFiles = Get-ChildItem -Path $EdgeDownloadFolder -Recurse -Force
-		# loop through all the files
-		foreach ($EdgeFile in $EdgeDownloadFiles) {
-			# check if the filename contains our zoom download file header
-			if ($EdgeFile.FullName -contains "Zoom_cm") {
-				# delete the file
-				Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
-				Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
+		# get all files in user's temp folder
+		$EdgeDownloadFolder = Join-Path -Path $UserPath -ChildPath '\AppData\Local\Temp\'
+		# check if the folder exists
+		if ((Test-Path -Path $EdgeDownloadFolder -PathType Container) -eq $True) {
+			# get all files in the temp folder
+			$EdgeDownloadFiles = Get-ChildItem -Path $EdgeDownloadFolder -Recurse -Force -File
+			# loop through all the files
+			foreach ($EdgeFile in $EdgeDownloadFiles) {
+				# check if the filename contains our zoom download file header
+				if ($EdgeFile.FullName -contains "Zoom_cm") {
+					# delete the file
+					Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
+					Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
+				}
 			}
 		}
-
 		# combine system task folder with zoom task name
 		$ZoomTask = Join-Path -Path 'C:\Windows\System32\Tasks' -ChildPath 'ZoomUpdateTask*'
 		# check if the task file exists
