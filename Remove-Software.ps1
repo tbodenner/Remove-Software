@@ -100,11 +100,11 @@ function Get-AdComputerArray {
 	# get our AD computers from each domain
 	foreach ($Domain in $Domains) {
 		# get our domain controller from our domain name
-		$Server = Get-ADDomainController -Discover -DomainName $Domain
+		#$Server = Get-ADDomainController -Discover -DomainName $Domain
 		# write to host the server we are using to find computer
-		Write-Host "Getting computers from '$($Server.Name)'" -ForegroundColor DarkCyan
+		Write-Host "Getting computers from '$($Domain)'" -ForegroundColor DarkCyan
 		# get all computer names from the current domain and add them to our array
-		$ADComputers += (Get-ADComputer -Filter $Filter -Server $Server).Name
+		$ADComputers += (Get-ADComputer -Filter $Filter -Server $Domain).Name
 	}
 	# return our array
 	return $ADComputers
