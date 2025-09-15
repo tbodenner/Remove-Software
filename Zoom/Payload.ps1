@@ -29,7 +29,7 @@ try {
 		}
 	}
 	# get user folders
-	$UserFolders = Get-ChildItem -Path C:\Users\ -Directory
+	$UserFolders = Get-ChildItem -Path 'C:\Users\' -Directory
 
 	foreach ($User in $UserFolders) {
 		# create full user folder path
@@ -80,10 +80,14 @@ try {
 			# loop through all the files
 			foreach ($EdgeFile in $EdgeDownloadFiles) {
 				# check if the filename contains our zoom download file header
-				if ($EdgeFile.FullName -contains "Zoom_cm") {
-					# delete the file
-					Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
-					Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
+				if ($EdgeFile.FullName.Contains("Zoom_cm")) {
+					# check if this is a file
+					if ((Test-Path -Path $EdgeFile -PathType Leaf) -eq $true) {
+						# delete the file
+						Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
+						Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
+						Write-Host "$($ComputerName): ---- File '$($EdgeFile.Name)'"
+					}
 				}
 			}
 		}

@@ -83,6 +83,10 @@ function Remove-AllFolders {
 		if ($Name -eq "AdvancedMicroDevicesInc") {
 			Remove-AmdFolders
 		}
+		# remove bing wallpaper installers
+		if ($Name -eq "Microsoft.BingWallpaper") {
+			Remove-BingWallpaperInstaller
+		}
 	}
 }
 
@@ -98,6 +102,47 @@ function Remove-PackageFolder {
 		}
 		else {
 			Write-Host "$($ComputerName): -- Removed App File '$(Split-Path -Path $FolderName -Leaf)'"
+		}
+	}
+}
+
+# search for and remove the bing wallpaper installers
+function Remove-BingWallpaperInstaller {
+	# get user folders
+	$UserFolders = Get-ChildItem -Path 'C:\Users\' -Directory
+
+	foreach ($User in $UserFolders) {
+		# create full user folder path
+		$UserPath = Join-Path -Path 'C:\Users\' -ChildPath $User
+
+		# combine user folder and downloaded installer file
+		$BingWallpaperInstallerFile = Join-Path -Path $UserPath -ChildPath 'Downloads\BingWallpaper*.exe'
+		# check if the downloads file exists
+		if ((Test-Path -Path $BingWallpaperInstallerFile -PathType Leaf) -eq $True) {
+			# if the file exists, then remove it
+			Remove-Item -Path $BingWallpaperInstallerFile -Force
+			Write-Host "$($ComputerName): -- Removed Bing Wallpaper download file '$($User)'"
+		}
+
+		# get all files in user's temp folder
+		$EdgeDownloadFolder = Join-Path -Path $UserPath -ChildPath '\AppData\Local\Temp\'
+		# check if the folder exists
+		if ((Test-Path -Path $EdgeDownloadFolder -PathType Container) -eq $True) {
+			# get all files in the temp folder
+			$EdgeDownloadFiles = Get-ChildItem -Path $EdgeDownloadFolder -Recurse -Force -File
+			# loop through all the files
+			foreach ($EdgeFile in $EdgeDownloadFiles) {
+				# check if the filename contains our installer download file header
+				if ($EdgeFile.FullName.Contains("BingWallpaper")) {
+					# check if this is a file
+					if ((Test-Path -Path $EdgeFile -PathType Leaf) -eq $true) {
+						# delete the file
+						Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
+						Write-Host "$($ComputerName): -- Removed Bing Wallpaper download file '$($User)'"
+						Write-Host "$($ComputerName): ---- File '$($EdgeFile.Name)'"
+					}
+				}
+			}
 		}
 	}
 }
@@ -403,6 +448,7 @@ try {
 	# try to remove all folders even if no packages were found
 	Write-Host "$($ComputerName): Removing Leftover Folders"
 	Remove-AllFolders -Name "NO APP NAME"
+	Remove-BingWallpaperInstaller
 
 	# update the registry to try and stop Windows from downloading the extra software packages
 	Set-DisableAppsForDevices
