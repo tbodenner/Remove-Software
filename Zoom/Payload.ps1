@@ -76,17 +76,24 @@ try {
 		# check if the folder exists
 		if ((Test-Path -Path $EdgeDownloadFolder -PathType Container) -eq $True) {
 			# get all files in the temp folder
-			$EdgeDownloadFiles = Get-ChildItem -Path $EdgeDownloadFolder -Recurse -Force -File
+			$TempFilePaths = (Get-ChildItem -Path $EdgeDownloadFolder -Recurse -Force).FullName
 			# loop through all the files
-			foreach ($EdgeFile in $EdgeDownloadFiles) {
-				# check if the filename contains our zoom download file header
-				if ($EdgeFile.FullName.Contains("Zoom_cm")) {
+			foreach ($TempFile in $TempFilePaths) {
+				# check if the filename contains our the item we are looking for
+				if ($TempFile.Contains("Zoom_cm")) {
 					# check if this is a file
-					if ((Test-Path -Path $EdgeFile -PathType Leaf) -eq $true) {
+					if ((Test-Path -Path $TempFile -PathType Leaf) -eq $true) {
 						# delete the file
-						Remove-Item $EdgeFile -Force -ErrorAction SilentlyContinue
-						Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
-						Write-Host "$($ComputerName): ---- File '$($EdgeFile.Name)'"
+						Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+						Write-Host "$($ComputerName): -- Removed Zoom file '$($User)'"
+						Write-Host "$($ComputerName): ---- File '$(Split-Path -Path $TempFile -Leaf)'"
+					}
+					# check if this is a folder
+					if ((Test-Path -Path $TempFile -PathType Container) -eq $true) {
+						# delete the folder
+						Remove-Item $TempFile -Force -Recurse -ErrorAction SilentlyContinue
+						Write-Host "$($ComputerName): -- Removed Zoom folder '$($User)'"
+						Write-Host "$($ComputerName): ---- Folder '$(Split-Path -Path $TempFile -Leaf)'"
 					}
 				}
 			}
