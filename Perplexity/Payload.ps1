@@ -1,6 +1,11 @@
 #Requires -RunAsAdministrator
 
+# hast name for the computer this script is running on
 $ComputerName = $env:computername
+# get the user who is running this script
+$RunningUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name.Split('\')[1]
+# get the running user's profile folder acl
+$AdminAcl = Get-Acl -Path "C:\Users\$($RunningUser)"
 
 try {
 	Write-Host "$($ComputerName): Connected"
@@ -16,7 +21,7 @@ try {
 
 	# loop through our processes
 	foreach ($ProcessName in $ProcessArray) {
-		# check if zoom is running
+		# check if the process is running
 		$Process = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
 		# if an executable is found
 		if ($null -ne $Process) {
@@ -29,7 +34,7 @@ try {
 	}
 
 	# check if we stopped any processes
-	if ($ProcessWasStopped -eq $true {
+	if ($ProcessWasStopped -eq $true) {
 		# wait a second for processes to end
 		Start-Sleep -Seconds 1
 	}
@@ -38,49 +43,51 @@ try {
 	$UserFolders = Get-ChildItem -Path 'C:\Users\' -Directory
 
 	# our list of folders to remove
-	$FolderArray = @(
-		"AppData\Local\Programs\Perplexity",
-		"AppData\Local\Perplexity"
-	)
-	# our list of files to remove
-	$FileArray = @(
+	$PathArray = @(
+		"AppData\Local\Programs\Perplexity\*",
+		"AppData\Local\Perplexity\*",
 		"Downloads\Perplexity*Setup*.exe"
 	)
 
+	# loop through each user's profile folder
 	foreach ($User in $UserFolders) {
 		# create full user folder path
 		$UserPath = Join-Path -Path 'C:\Users\' -ChildPath $User
 
-		# loop through the folder array
-		foreach ($Folder in $FolderArray) {
-			# combine the two folders
-			$FolderJoinPath = Join-Path -Path $UserPath -ChildPath $Folder
-			# resolve the folder names
-			$ResolvedFolderPaths = Resolve-Path -Path $FolderJoinPath -ErrorAction SilentlyContinue
-			# loop through our resolved paths
-			foreach ($FolderPath in $ResolvedFolderPaths) {
-				# check if the path exists
-				if ((Test-Path -Path $FolderPath -PathType Container) -eq $True) {
-					# if the path exists, then remove the folder
-					Remove-Item -Path $FolderPath -Recurse -Force
-					Write-Host "$($ComputerName): -- Removed folder '$($User)': '$(Split-Path -Path $FolderPath -Leaf)'"
+		# loop through the path array
+		foreach ($PartialPath in $PathArray) {
+			# combine the two paths
+			$PartialJoinPath = Join-Path -Path $UserPath -ChildPath $PartialPath
+			# resolve the paths
+			$ResolvedPaths = Resolve-Path -Path $PartialJoinPath -ErrorAction SilentlyContinue
+
+			# check if our partial path includes a wildcard character
+			if (($PartialPath.Substring($PartialPath.Length - 1, 1)) -eq "*") {
+				$RootPath = $PartialPath.Substring(0, $PartialPath.Length - 1)
+				$RootJoinPath = Join-Path -Path $UserPath -ChildPath $RootPath
+				# check if this is a folder and it exists
+				if ((Test-Path -Path $RootJoinPath -PathType Container) -eq $True) {
+					# check if our acl is not null
+					if ($null -ne $AdminAcl) {
+						# set admin acl on root folder
+						Set-Acl -Path $RootJoinPath -AclObject $AdminAcl -ErrorAction SilentlyContinue
+					}
 				}
 			}
-		}
 
-		# loop through the file array
-		foreach ($File in $FileArray) {
-			# combine user folder and file
-			$FileJoinPath = Join-Path -Path $UserPath -ChildPath $File
-			# resolve the file names
-			$ResolvedFilePaths = Resolve-Path -Path $FileJoinPath -ErrorAction SilentlyContinue
-			# loop through our resolved files
-			foreach ($FilePath in $ResolvedFilePaths) {
-				# check if the file exists
-				if ((Test-Path -Path $FilePath -PathType Leaf) -eq $True) {
-					# if the file exists, then remove it
-					Remove-Item -Path $FilePath -Force
-					Write-Host "$($ComputerName): -- Removed file '$($User)': '$(Split-Path -Path $FilePath -Leaf)'"
+			# loop through our resolved paths
+			foreach ($ResolvedPath in $ResolvedPaths) {
+				# check if this is a folder and it exists
+				if ((Test-Path -Path $ResolvedPath -PathType Container) -eq $True) {
+					# if the path exists, then remove the folder
+					Remove-Item -Path $ResolvedPath -Recurse -Force
+					Write-Host "$($ComputerName): -- Removed folder '$(Split-Path -Path $ResolvedPath -Leaf)' for '$($User)'"
+				}
+				# check if this is a file and it exists
+				if ((Test-Path -Path $ResolvedPath -PathType Leaf) -eq $True) {
+					# if the path exists, then remove the file
+					Remove-Item -Path $ResolvedPath -Force
+					Write-Host "$($ComputerName): -- Removed file '$(Split-Path -Path $ResolvedPath -Leaf)' for '$($User)'"
 				}
 			}
 		}
