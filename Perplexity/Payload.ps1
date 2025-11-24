@@ -20,7 +20,9 @@ try {
 	$PathArray = @(
 		"AppData\Local\Programs\Perplexity\*",
 		"AppData\Local\Perplexity\*",
-		"Downloads\Perplexity*Setup*.exe"
+		"Downloads\Perplexity*Setup*.exe",
+		"AppData\Local\Programs\Loom\*",
+		"AppData\Local\loom-updater\pending"
 	)
 	# this bool is set if a process was stopped
 	$ProcessWasStopped = $false
