@@ -1,74 +1,106 @@
 #Requires -RunAsAdministrator
 
+# host name for the computer this script is running on
 $ComputerName = $env:computername
+# get the user who is running this script
+$RunningUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name.Split('\')[1]
+# get the running user's profile folder acl
+$AdminAcl = Get-Acl -Path "C:\Users\$($RunningUser)"
 
 try {
 	Write-Host "$($ComputerName): Connected"
 	
-	# check if zoom is running
-	$ZoomProcess = Get-Process -Name Zoom -ErrorAction SilentlyContinue
-	# if a zoom executable is found
-	if ($null -ne $ZoomProcess) {
-		# get the UDP connections
-		$ZoomUPD = Get-NetUDPEndpoint -OwningProcess $ZoomProcess.Id -ErrorAction SilentlyContinue
-		# remove any local connections and return a count of data being sent
-		$ConnCount = ($ZoomUPD | Where-Object {$_.LocalAddress -ne '127.0.0.1'} | Measure-Object).Count
-		# if the count is non-zero, zoom is in a meeting
-		if ($ConnCount -gt 0) {
-			# write a message
-			Write-Host "$($ComputerName): -- Active Zoom meeting detected!"
-			# and exit
-			return
-		}
-		else {
-			# otherwise, stop the process and continue to remove the installed application
-			Stop-Process $ZoomProcess -Force -ErrorAction SilentlyContinue
-			
-			# wait 2 seconds for the process to end
-			Start-Sleep -Seconds 2
-		}
-	}
+	# array of processes to stop
+	$ProcessArray = @(
+		'Zoom'
+	)
+
+	# our list of folders to remove
+	$PathArray = @(
+		"AppData\Roaming\Zoom\*",
+		"AppData\Local\Zoom\*",
+		"AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Zoom",
+		"Downloads\Zoom_cm*",
+		"C:\Windows\System32\Tasks\ZoomUpdateTask*"
+	)
+
+	# this bool is set if a process was stopped
+	$ProcessWasStopped = $false
+
 	# get user folders
 	$UserFolders = Get-ChildItem -Path 'C:\Users\' -Directory
 
+	# loop through our processes
+	foreach ($ProcessName in $ProcessArray) {
+		# check if the process is running
+		$Process = Get-Process -Name $ProcessName -ErrorAction SilentlyContinue
+		# if an executable is found
+		if ($null -ne $Process) {
+			# stop the process
+			Stop-Process $Process -Force -ErrorAction SilentlyContinue
+			Write-Host "$($ComputerName): -- Stopping process '$($ProcessName)'"
+			# set our bool
+			$ProcessWasStopped = $true
+		}
+	}
+
+	# check if we stopped any processes
+	if ($ProcessWasStopped -eq $true) {
+		# wait a second for processes to end
+		Start-Sleep -Seconds 1
+	}
+
+	# loop through each user's profile folder
 	foreach ($User in $UserFolders) {
 		# create full user folder path
 		$UserPath = Join-Path -Path 'C:\Users\' -ChildPath $User
 
-		# combine user folder and zoom folder
-		$ZoomRoamingPath = Join-Path -Path $UserPath -ChildPath 'AppData\Roaming\Zoom'
-		# check if the zoom path exists
-		if ((Test-Path -Path $ZoomRoamingPath -PathType Container) -eq $True) {
-			# if the path exists, then remove it
-			Remove-Item -Path $ZoomRoamingPath -Recurse -Force
-			Write-Host "$($ComputerName): -- Removed roaming Zoom folder '$($User)'"
-		}
+		# loop through the path array
+		foreach ($PartialPath in $PathArray) {
+			# check if the path starts in the root of c:
+			if (($PartialPath.Substring(0, 3) -ne "C:\")) {
+				# combine the two paths
+				$PartialJoinPath = Join-Path -Path $UserPath -ChildPath $PartialPath
+				# resolve the paths
+				$ResolvedPaths = Resolve-Path -Path $PartialJoinPath -ErrorAction SilentlyContinue
+			}
+			else {
+				# path is not in user's folder, don't join it
+				$PartialJoinPath = $PartialPath
+				# resolve the paths
+				$ResolvedPaths = Resolve-Path -Path $PartialJoinPath -ErrorAction SilentlyContinue
+			}
 
-		# combine user folder and zoom folder
-		$ZoomLocalPath = Join-Path -Path $UserPath -ChildPath 'AppData\Local\Zoom'
-		# check if the zoom path exists
-		if ((Test-Path -Path $ZoomLocalPath -PathType Container) -eq $True) {
-			# if the path exists, then remove it
-			Remove-Item -Path $ZoomLocalPath -Recurse -Force
-			Write-Host "$($ComputerName): -- Removed local Zoom folder '$($User)'"
-		}
+			# check if our partial path includes a wildcard character
+			if (($PartialPath.Substring($PartialPath.Length - 2, 2)) -eq "\*") {
+				# create our root folder path by removing the asterisk
+				$RootPath = $PartialPath.Substring(0, $PartialPath.Length - 1)
+				$RootJoinPath = Join-Path -Path $UserPath -ChildPath $RootPath
+				# check if this is a folder and it exists
+				if ((Test-Path -Path $RootJoinPath -PathType Container) -eq $True) {
+					# check if our acl is not null
+					if ($null -ne $AdminAcl) {
+						# set admin acl on root folder
+						Set-Acl -Path $RootJoinPath -AclObject $AdminAcl -ErrorAction SilentlyContinue
+					}
+				}
+			}
 
-		# create full user start menu folder path
-		$ZoomStartPath = Join-Path -Path $UserPath -ChildPath 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Zoom'
-		# check if the zoom start menu path exists
-		if ((Test-Path -Path $ZoomStartPath -PathType Container) -eq $True) {
-			# if the path exists, then remove it
-			Remove-Item -Path $ZoomStartPath -Recurse -Force
-			Write-Host "$($ComputerName): -- Removed start menu Zoom folder '$($User)'"
-		}
-
-		# combine user folder and downloaded zoom file
-		$ZoomFile = Join-Path -Path $UserPath -ChildPath 'Downloads\Zoom_cm*'
-		# check if the downloads file exists
-		if ((Test-Path -Path $ZoomFile -PathType Leaf) -eq $True) {
-			# if the file exists, then remove it
-			Remove-Item -Path $ZoomFile -Force
-			Write-Host "$($ComputerName): -- Removed Zoom download file '$($User)'"
+			# loop through our resolved paths
+			foreach ($ResolvedPath in $ResolvedPaths) {
+				# check if this is a folder and it exists
+				if ((Test-Path -Path $ResolvedPath -PathType Container) -eq $True) {
+					# if the path exists, then remove the folder
+					Remove-Item -Path $ResolvedPath -Recurse -Force
+					Write-Host "$($ComputerName): -- Removed folder '$(Split-Path -Path $ResolvedPath -Leaf)' for '$($User)'"
+				}
+				# check if this is a file and it exists
+				if ((Test-Path -Path $ResolvedPath -PathType Leaf) -eq $True) {
+					# if the path exists, then remove the file
+					Remove-Item -Path $ResolvedPath -Force
+					Write-Host "$($ComputerName): -- Removed file '$(Split-Path -Path $ResolvedPath -Leaf)' for '$($User)'"
+				}
+			}
 		}
 
 		# get all files in user's temp folder
@@ -85,26 +117,16 @@ try {
 					if ((Test-Path -Path $TempFile -PathType Leaf) -eq $true) {
 						# delete the file
 						Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
-						Write-Host "$($ComputerName): -- Removed Zoom file '$($User)'"
-						Write-Host "$($ComputerName): ---- File '$(Split-Path -Path $TempFile -Leaf)'"
+						Write-Host "$($ComputerName): -- Removed file '$(Split-Path -Path $TempFile -Leaf)' for '$($User)'"
 					}
 					# check if this is a folder
 					if ((Test-Path -Path $TempFile -PathType Container) -eq $true) {
 						# delete the folder
 						Remove-Item $TempFile -Force -Recurse -ErrorAction SilentlyContinue
-						Write-Host "$($ComputerName): -- Removed Zoom folder '$($User)'"
-						Write-Host "$($ComputerName): ---- Folder '$(Split-Path -Path $TempFile -Leaf)'"
+						Write-Host "$($ComputerName): -- Removed folder '$(Split-Path -Path $TempFile -Leaf)' for '$($User)'"
 					}
 				}
 			}
-		}
-		# combine system task folder with zoom task name
-		$ZoomTask = Join-Path -Path 'C:\Windows\System32\Tasks' -ChildPath 'ZoomUpdateTask*'
-		# check if the task file exists
-		if ((Test-Path -Path $ZoomTask -PathType Leaf) -eq $True) {
-			# if the file exists, then remove it
-			Remove-Item -Path $ZoomTask -Force
-			Write-Host "$($ComputerName): -- Removed Zoom task file"
 		}
 	}
 	

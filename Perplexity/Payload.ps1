@@ -1,6 +1,6 @@
 #Requires -RunAsAdministrator
 
-# hast name for the computer this script is running on
+# host name for the computer this script is running on
 $ComputerName = $env:computername
 # get the user who is running this script
 $RunningUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name.Split('\')[1]
@@ -15,9 +15,18 @@ try {
 		'Perplexity',
 		'Comet'
 	)
-
+	
+	# our list of folders to remove
+	$PathArray = @(
+		"AppData\Local\Programs\Perplexity\*",
+		"AppData\Local\Perplexity\*",
+		"Downloads\Perplexity*Setup*.exe"
+	)
 	# this bool is set if a process was stopped
 	$ProcessWasStopped = $false
+
+	# get user folders
+	$UserFolders = Get-ChildItem -Path 'C:\Users\' -Directory
 
 	# loop through our processes
 	foreach ($ProcessName in $ProcessArray) {
@@ -39,16 +48,6 @@ try {
 		Start-Sleep -Seconds 1
 	}
 
-	# get user folders
-	$UserFolders = Get-ChildItem -Path 'C:\Users\' -Directory
-
-	# our list of folders to remove
-	$PathArray = @(
-		"AppData\Local\Programs\Perplexity\*",
-		"AppData\Local\Perplexity\*",
-		"Downloads\Perplexity*Setup*.exe"
-	)
-
 	# loop through each user's profile folder
 	foreach ($User in $UserFolders) {
 		# create full user folder path
@@ -56,13 +55,23 @@ try {
 
 		# loop through the path array
 		foreach ($PartialPath in $PathArray) {
-			# combine the two paths
-			$PartialJoinPath = Join-Path -Path $UserPath -ChildPath $PartialPath
-			# resolve the paths
-			$ResolvedPaths = Resolve-Path -Path $PartialJoinPath -ErrorAction SilentlyContinue
+			# check if the path starts in the root of c:
+			if (($PartialPath.Substring(0, 3) -ne "C:\")) {
+				# combine the two paths
+				$PartialJoinPath = Join-Path -Path $UserPath -ChildPath $PartialPath
+				# resolve the paths
+				$ResolvedPaths = Resolve-Path -Path $PartialJoinPath -ErrorAction SilentlyContinue
+			}
+			else {
+				# path is not in user's folder, don't join it
+				$PartialJoinPath = $PartialPath
+				# resolve the paths
+				$ResolvedPaths = Resolve-Path -Path $PartialJoinPath -ErrorAction SilentlyContinue
+			}
 
 			# check if our partial path includes a wildcard character
-			if (($PartialPath.Substring($PartialPath.Length - 1, 1)) -eq "*") {
+			if (($PartialPath.Substring($PartialPath.Length - 2, 2)) -eq "\*") {
+				# create our root folder path by removing the asterisk
 				$RootPath = $PartialPath.Substring(0, $PartialPath.Length - 1)
 				$RootJoinPath = Join-Path -Path $UserPath -ChildPath $RootPath
 				# check if this is a folder and it exists
