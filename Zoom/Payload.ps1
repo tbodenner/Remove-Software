@@ -1,5 +1,3 @@
-#Requires -RunAsAdministrator
-
 # host name for the computer this script is running on
 $ComputerName = $env:computername
 # get the user who is running this script

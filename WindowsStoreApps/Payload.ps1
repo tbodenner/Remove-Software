@@ -1,5 +1,3 @@
-#Requires -RunAsAdministrator
-
 $ComputerName = $env:computername
 
 function Get-AllUserPackages {

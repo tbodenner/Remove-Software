@@ -1,10 +1,8 @@
-#Requires -RunAsAdministrator
-
 #region PARAMETERS
 
 param (
 	# the folder that contains the payload and computer list
-	[Parameter(Mandatory=$True)][string[]]$InputPath,
+	[Parameter(Mandatory=$true)][string[]]$InputPath,
 	# if enabled, remote sessions will be started with powershell v7
 	[switch]$PowerShell7
 )
@@ -24,7 +22,7 @@ $Global:ConfigFilter = ""
 
 function Get-ConfigFromJson {
 	# check if our config file exists
-	if ((Test-Path -Path $Global:JsonConfigFileName) -eq $False)
+	if ((Test-Path -Path $Global:JsonConfigFileName) -eq $false)
 	{
 		# if we are unable to read the file, write an error message and exit
 		Write-Host "ERROR: JSON config file '$($Global:JsonConfigFileName)' not found." -ForegroundColor Red
@@ -34,7 +32,7 @@ function Get-ConfigFromJson {
 	$JsonConfigHashtable = Get-Content $Global:JsonConfigFileName | ConvertFrom-Json -AsHashtable
 
 	# check if our hashtable is null
-	if ($Null -eq $JsonConfigHashtable) {
+	if ($null -eq $JsonConfigHashtable) {
 		# hashtable is null, exit
 		Write-Host "ERROR: No config data read from JSON file '$($Global:JsonConfigFileName)'." -ForegroundColor Red
 		exit
@@ -51,14 +49,14 @@ function Get-ConfigFromJson {
 # check if a config value is null
 function Test-ConfigValueNullOrEmpty {
 	param (
-		[Parameter(Mandatory=$True)][hashtable]$Hashtable,
-		[Parameter(Mandatory=$True)][string]$Key
+		[Parameter(Mandatory=$true)][hashtable]$Hashtable,
+		[Parameter(Mandatory=$true)][string]$Key
 	)
 	# get our value
 	$Value = $Hashtable[$Key]
 
 	# check if the value is null
-	if (($Null -eq $Value) -or ($Value -eq "")) {
+	if (($null -eq $Value) -or ($Value -eq "")) {
 		# if the value is null, write an error message and exit
 		Write-Host "ERROR: Config '$($Key)' value is null or empty." -ForegroundColor Red
 		exit
@@ -70,7 +68,7 @@ function Test-ConfigValueNullOrEmpty {
 # read computer list text file and return a unique sorted array
 function Get-UniqueArrayFromFile {
 	param (
-		[Parameter(Mandatory=$True)][string]$FilePath
+		[Parameter(Mandatory=$true)][string]$FilePath
 	)
 	# get the list of computers from a text file
 	$ComputerList = Get-Content -Path $FilePath
@@ -81,32 +79,30 @@ function Get-UniqueArrayFromFile {
 		# trim our computer name
 		$Computer = $Computer.Trim()
 		# skip empty lines
-		if (($Null -eq $Computer) -or ($Computer -eq "")) { continue }
+		if (($null -eq $Computer) -or ($Computer -eq "")) { continue }
 		# add the computer to the hashtable, duplicates will not be added
-		$ComputerSet[$Computer] = $Null
+		$ComputerSet[$Computer] = $null
 	}
 	# return a sorted array of the hashtable keys
 	return $ComputerSet.Keys | Sort-Object
 }
 
 # get an array of all our computers in AD
-function Get-AdComputerArray {
+function Get-AdComputerHashtable {
 	param (
 		[string[]]$Domains,
 		[string]$Filter
 	)
 	# array to store our AD computers in
-	$ADComputers = @()
+	$ADComputers = @{}
 	# get our AD computers from each domain
 	foreach ($Domain in $Domains) {
-		# get our domain controller from our domain name
-		#$Server = Get-ADDomainController -Discover -DomainName $Domain
 		# write to host the server we are using to find computer
 		Write-Host "Getting computers from '$($Domain)'" -ForegroundColor DarkCyan
 		# get all computer names from the current domain and add them to our array
-		$ADComputers += (Get-ADComputer -Filter $Filter -Server $Domain).Name
+		$ADComputers[$Domain] = (Get-ADComputer -Filter $Filter -Server $Domain).Name
 	}
-	# return our array
+	# return our hashtable
 	return $ADComputers
 }
 
@@ -114,40 +110,55 @@ function Get-AdComputerArray {
 function Test-ComputerInAD {
 	# parameters
 	param (
-		[Parameter(Mandatory=$True)][string[]]$ADArray,
-		[Parameter(Mandatory=$True)][string]$ComputerName
+		[Parameter(Mandatory=$true)][hashtable]$ADHashtable,
+		[Parameter(Mandatory=$true)][string]$ComputerName
 	)
 	# check if our AD array is null
-	if ($Null -eq $ADArray) {
+	if ($null -eq $ADHashtable) {
 		# computer array is null, return false
-		$False
+		return $false
 	}
-	# check if the computer is in our AD array
-	if ($ADArray -contains $ComputerName) {
-		# if the computer is in our array, return true
-		$True
+	# look in all our domains for the computer
+	foreach ($Domain in $ADHashtable.Keys) {
+		# check if the computer is in our current domain
+		if ($ADHashtable[$Domain] -match $ComputerName) {
+			# if the computer is in our array, return true
+			return $true
+		}
 	}
-	else {
-		# otherwise, return false
-		$False
-	}
+	# if not found, return false
+	return $false
 }
 
 # check if a computer can be found
 function Find-Computer {
 	# parameters
 	param (
-		[Parameter(Mandatory=$True)][string[]]$ADArray,
-		[Parameter(Mandatory=$True)][string]$ComputerName
+		[Parameter(Mandatory=$true)][hashtable]$ADHashtable,
+		[Parameter(Mandatory=$true)][string]$ComputerName
 	)
 	# check if the computer is in AD
-	if ((Test-ComputerInAd -ADArray $ADArray -ComputerName $ComputerName) -eq $False) {
+	if ((Test-ComputerInAd -ADHashtable $ADHashtable -ComputerName $ComputerName) -eq $false) {
 		return @(-1, $NotInAD)
+	}
+	# get our computer's domain
+	$ComputerDomain = Get-ComputerDomain -ADHashtable $ADHashtable -ComputerName $ComputerName
+	# check if our domain is null or empty
+	if (($null -eq $ComputerDomain) -or ($ComputerDomain -eq "")) {
+		# return our result
+		return @(-1, 'DomainNotFound')
+	}
+	# a period might indicate the name already has a domain
+	# so, check if our computer name does not have a period
+	if ($ComputerName -notcontains ".") {
+		# update our computer name
+		$ComputerName = Get-ComputerFQDN -ADHashtable $ADHashtable -ComputerName $ComputerName
 	}
 	# ping the computer and save the details
 	$ComputerDetails = Test-Connection -TargetName $ComputerName -Count 1 -TimeoutSeconds 3 -ErrorAction Ignore
 	# check if the computer was found
-	if ($Null -eq $ComputerDetails) {
+	if ($null -eq $ComputerDetails) {
+		# return our result
 		return @(-1, $NotFound)
 	}
 	# get the pinged computer's ip
@@ -157,7 +168,7 @@ function Find-Computer {
 	# get the status of the ping
 	$Status = $ComputerDetails.Status
 	# check if our status is null
-	if ($Null -eq $Status) {
+	if ($null -eq $Status) {
 		# if null, set our status
 		$Status = $NoStatus
 	}
@@ -167,39 +178,73 @@ function Find-Computer {
 		return @(-1, $Status)
 	}
 	# set our error value for our dns name
-	$DnsName = $Null
+	$DnsName = $null
 	# check if we got an ip
-	if ($Null -ne $Ip) {
+	if ($null -ne $Ip) {
 		# get our dns data
 		$DnsData = Resolve-DnsName -Name $Ip -ErrorAction Ignore
 		# check if we got any data
-		if ($Null -eq $DnsData) {
+		if ($null -eq $DnsData) {
 			return @(-1, 'DnsNotFound')
 		}
 		# get our host name from the data
-		$NameHost = $DnsData.NameHost
-		# check if we got a hostname
-		if ($Null -eq $NameHost) {
-			return @(-1, 'NoHostName')
-		}
-		# split the host name and return it
-		$DnsName = $NameHost.Split('.')
+		$DnsName = $DnsData.NameHost
 	}
-	# check if our resolved name is null
-	if ($Null -eq $DnsName) {
+	# check if we got a hostname
+	if ($null -eq $DnsName) {
 		# if true, write a message
 		Write-Host "$($ComputerName) Unable to resolve computer name from IP address" -ForegroundColor Red
+		# return our result
+		return @(-1, 'NoHostName')
 	}
-	else {
-		# otherwise, check if our computer name matches the dns name
-		if ($DnsName[0] -ne $ComputerName) {
-			Write-Host "$($ComputerName) DNS mismatch (DNS: $($DnsName[0]), CN: $($ComputerName))" -ForegroundColor Red
-			# return the dns error
-			return @($Latency, $DnsMismatch)
-		}
+	# otherwise, check if our computer name matches the dns name
+	if ($DnsName -ne $ComputerName) {
+		Write-Host "$($ComputerName) DNS mismatch (DNS: $($DnsName), CN: $($ComputerName))" -ForegroundColor Red
+		# return the dns error
+		return @($Latency, $DnsMismatch)
 	}
 	# return the result of our ping
 	return @($Latency, $Status)
+}
+
+function Get-ComputerDomain {
+	# parameters
+	param (
+		[Parameter(Mandatory=$true)][hashtable]$ADHashtable,
+		[Parameter(Mandatory=$true)][string]$ComputerName
+	)
+	# check if our AD array is null
+	if ($null -eq $ADHashtable) {
+		# computer array is null, return false
+		return $null
+	}
+	# look in all our domains for the computer
+	foreach ($Domain in $ADHashtable.Keys) {
+		# check if the computer is in our current domain
+		if ($ADHashtable[$Domain] -match $ComputerName) {
+			# if the computer is in our array, return true
+			return $Domain
+		}
+	}
+}
+
+function Get-ComputerFQDN {
+	# parameters
+	param (
+		[Parameter(Mandatory=$true)][hashtable]$ADHashtable,
+		[Parameter(Mandatory=$true)][string]$ComputerName
+	)
+	# get our domain
+	$Domain = Get-ComputerDomain -ADHashtable $ADHashtable -ComputerName $ComputerName
+	# check if we got a domain
+	if (($null -eq $Domain) -or ($Domain -eq "")) {
+		# if we have no domain, return the computer name
+		$ComputerName
+	}
+	else {
+		# otherwise, return our fully qualified domain name
+		"$($ComputerName).$($Domain)"
+	}
 }
 
 #endregion FUNCTIONS
@@ -214,11 +259,14 @@ $DnsMismatch = 'DnsMismatch'
 # if our computer is not in AD, use this status
 $NotInAd = 'NotInAd'
 
+# our progress activity
+$Activity = "Progress"
+
 # do the work for each input path
 foreach ($IPath in $InputPath) {
 
 	# test if our input folder exists
-	if ((Test-Path -Path $IPath) -eq $False) {
+	if ((Test-Path -Path $IPath) -eq $false) {
 		Write-Host "Error: Input folder not found." -ForegroundColor Red
 		return
 	}
@@ -228,7 +276,7 @@ foreach ($IPath in $InputPath) {
 	$LogFolder = Join-Path -Path $IPath -ChildPath $LogFolderName
 
 	# test if our log folder exists
-	if ((Test-Path -Path $LogFolder) -eq $False) {
+	if ((Test-Path -Path $LogFolder) -eq $false) {
 		New-Item -Path $LogFolder -ItemType "directory" | Out-Null
 	}
 
@@ -237,7 +285,7 @@ foreach ($IPath in $InputPath) {
 	$OldLogFolder = Join-Path -Path $LogFolder -ChildPath $OldLogFolderName
 
 	# test if our old log folder exists
-	if ((Test-Path -Path $OldLogFolder) -eq $False) {
+	if ((Test-Path -Path $OldLogFolder) -eq $false) {
 		New-Item -Path $OldLogFolder -ItemType "directory" | Out-Null
 	}
 
@@ -249,12 +297,12 @@ foreach ($IPath in $InputPath) {
 	$ComputerListFile = Join-Path -Path $IPath -ChildPath "ComputerList.txt"
 
 	# test if our required payload file exists
-	if ((Test-Path -Path $PayloadFile) -eq $False) {
+	if ((Test-Path -Path $PayloadFile) -eq $false) {
 		Write-Host "Error: Payload file not found." -ForegroundColor Red
 		return
 	}
 	# test if our required computer list file exists
-	if ((Test-Path -Path $ComputerListFile) -eq $False) {
+	if ((Test-Path -Path $ComputerListFile) -eq $false) {
 		Write-Host "Error: Computer list file not found." -ForegroundColor Red
 		return
 	}
@@ -309,33 +357,32 @@ foreach ($IPath in $InputPath) {
 	$PssOptions = New-PSSessionOption -MaxConnectionRetryCount 0 -OpenTimeout 30000 -OperationTimeout 30000
 
 	# get an array of AD computers
-	$ADComputerArray = Get-AdComputerArray -Domains $Global:ConfigDomains -Filter $Global:ConfigFilter
+	$ADComputerHashtable = Get-AdComputerHashtable -Domains $Global:ConfigDomains -Filter $Global:ConfigFilter
 
 	# loop through list of computers
 	foreach ($Computer in $ComputerList) {
 		try {
 			# check of we have a computer name
-			if (($Null -eq $Computer) -or ($Computer -eq "")) { continue }
+			if (($null -eq $Computer) -or ($Computer -eq "")) { continue }
 			# get the last error in the error variable
 			$LastError = $Error[0]
 			# update our progress
 			$PComplete = ($ComputerCount / $TotalComputers) * 100
 			$Status = "$ComputerCount/$TotalComputers Complete"
-			$Activity = "Progress"
 			Write-Progress -Activity $Activity -Status $Status -PercentComplete $PComplete
 			Write-Host "`n$($Computer): Trying To Connect" -ForegroundColor Yellow
 			# set our parameters for our invoke command
 			$Parameters = @{
-				ComputerName	= $Computer
+				ComputerName	= (Get-ComputerFQDN -ADHashtable $ADComputerHashtable -ComputerName $Computer)
 				FilePath		= $PayloadFile
 				ErrorAction		= "SilentlyContinue"
 				SessionOption	= $PssOptions
 			}
-			if ($PowerShell7 -eq $True) {
+			if ($PowerShell7 -eq $true) {
 				$Parameters['ConfigurationName'] = "PowerShell.7"
 			}
 			# get our ping data
-			$PingData = Find-Computer -ADArray $ADComputerArray -ComputerName $Computer
+			$PingData = Find-Computer -ADHashtable $ADComputerHashtable -ComputerName $Computer
 			# get the result (boolean)
 			$PingLatency = $PingData[0]
 			# get the ping status (string)
@@ -348,7 +395,7 @@ foreach ($IPath in $InputPath) {
 					# run the script on the target computer if we can ping the computer
 					$InvokeReturn = Invoke-Command @Parameters
 					# check if we got anything back from the invoke command
-					if ($Null -ne $InvokeReturn) {
+					if ($null -ne $InvokeReturn) {
 						# should be @($SkipCount, $UninstallCount)
 						# check if our skip count is an int
 						if ($InvokeReturn[0] -is [int]) {
@@ -402,6 +449,9 @@ foreach ($IPath in $InputPath) {
 			$ErrorArray += $Computer
 		}
 	}
+
+	# complete our progress
+	Write-Progress -Activity $Activity -Completed
 
 	# create our counts array to output to the console and a file
 	$CountsArray = @(

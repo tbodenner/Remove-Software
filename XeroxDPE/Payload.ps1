@@ -1,5 +1,3 @@
-#Requires -RunAsAdministrator
-
 $ComputerName = $env:computername
 $SkipCount = 0
 $UninstallCount = 0
