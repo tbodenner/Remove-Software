@@ -8,13 +8,29 @@ param (
 )
 
 #endregion PARAMETERS
+#region IMPORTS
+
+# check for our required module
+$RequiredModuleName = 'LDAP-ADTools'
+if($null -eq (Get-Module -Name $RequiredModuleName -ListAvailable)) {
+    # the module was not found, write a message and exit
+    Write-Host "Required module '$($RequiredModuleName)' not found" -ForegroundColor Red
+    Write-Host "`nModule can be found at https://github.com/tbodenner/PowerShell-Modules" -ForegroundColor Red
+    Write-Host "Update the PSModulePath: `$env:PSModulePath += `";<path to module>`"" -ForegroundColor Red
+    Write-Host "`nExiting" -ForegroundColor Red
+    exit
+}
+# import our module only for this script
+Import-Module $RequiredModuleName -Scope Local
+
+#endregion IMPORTS
 #region PROPERTIES
 
 # the name of our config json file
 $Global:JsonConfigFileName = 'config.json'
 
 # these properties are loaded from the config file
-$Global:ConfigDomains = $null
+$Global:ConfigRootOU = $null
 $Global:ConfigFilter = ""
 
 #endregion PARAMETERS
@@ -38,12 +54,12 @@ function Get-ConfigFromJson {
 		exit
 	}
 	# set our variable from the config file
-	$Global:ConfigDomains = Test-ConfigValueNullOrEmpty -Hashtable $JsonConfigHashtable -Key "Domains"
+	$Global:ConfigRootOU = Test-ConfigValueNullOrEmpty -Hashtable $JsonConfigHashtable -Key "RootOU"
 	$Global:ConfigFilter = Test-ConfigValueNullOrEmpty -Hashtable $JsonConfigHashtable -Key "Filter"
 	# write our config values to the host
 	Write-Host "Values read from $($Global:JsonConfigFileName):" -ForegroundColor DarkCyan
-	Write-Host "  Domains: $($Global:ConfigDomains)" -ForegroundColor Cyan
-	Write-Host "   Filter: $($Global:ConfigFilter)" -ForegroundColor Cyan
+	Write-Host "  RootOU: '$($Global:ConfigRootOU -join "'`n          '")'" -ForegroundColor Cyan
+	Write-Host "  Filter: '$($Global:ConfigFilter)'" -ForegroundColor Cyan
 }
 
 # check if a config value is null
@@ -87,25 +103,6 @@ function Get-UniqueArrayFromFile {
 	return $ComputerSet.Keys | Sort-Object
 }
 
-# get an array of all our computers in AD
-function Get-AdComputerHashtable {
-	param (
-		[string[]]$Domains,
-		[string]$Filter
-	)
-	# array to store our AD computers in
-	$ADComputers = @{}
-	# get our AD computers from each domain
-	foreach ($Domain in $Domains) {
-		# write to host the server we are using to find computer
-		Write-Host "Getting computers from '$($Domain)'" -ForegroundColor DarkCyan
-		# get all computer names from the current domain and add them to our array
-		$ADComputers[$Domain] = (Get-ADComputer -Filter $Filter -Server $Domain).Name
-	}
-	# return our hashtable
-	return $ADComputers
-}
-
 # test if a computer is in AD
 function Test-ComputerInAD {
 	# parameters
@@ -118,13 +115,10 @@ function Test-ComputerInAD {
 		# computer array is null, return false
 		return $false
 	}
-	# look in all our domains for the computer
-	foreach ($Domain in $ADHashtable.Keys) {
-		# check if the computer is in our current domain
-		if ($ADHashtable[$Domain] -match $ComputerName) {
-			# if the computer is in our array, return true
-			return $true
-		}
+	# check if the computer is in our hashtable
+	if ($ADHashtable.Keys -match $ComputerName) {
+		# if the computer is in our array, return true
+		return $true
 	}
 	# if not found, return false
 	return $false
@@ -141,19 +135,7 @@ function Find-Computer {
 	if ((Test-ComputerInAd -ADHashtable $ADHashtable -ComputerName $ComputerName) -eq $false) {
 		return @(-1, $NotInAD)
 	}
-	# get our computer's domain
-	$ComputerDomain = Get-ComputerDomain -ADHashtable $ADHashtable -ComputerName $ComputerName
-	# check if our domain is null or empty
-	if (($null -eq $ComputerDomain) -or ($ComputerDomain -eq "")) {
-		# return our result
-		return @(-1, 'DomainNotFound')
-	}
-	# a period might indicate the name already has a domain
-	# so, check if our computer name does not have a period
-	if ($ComputerName -notcontains ".") {
-		# update our computer name
-		$ComputerName = Get-ComputerFQDN -ADHashtable $ADHashtable -ComputerName $ComputerName
-	}
+
 	# ping the computer and save the details
 	$ComputerDetails = Test-Connection -TargetName $ComputerName -Count 1 -TimeoutSeconds 3 -ErrorAction Ignore
 	# check if the computer was found
@@ -198,53 +180,13 @@ function Find-Computer {
 		return @(-1, 'NoHostName')
 	}
 	# otherwise, check if our computer name matches the dns name
-	if ($DnsName -ne $ComputerName) {
-		Write-Host "$($ComputerName) DNS mismatch (DNS: $($DnsName), CN: $($ComputerName))" -ForegroundColor Red
+	if ($DnsName -ne ($ADHashtable[$ComputerName]['dnshostname'])) {
+		Write-Host "$($ComputerName) DNS mismatch (DNS: $($DnsName), CN: $($ADHashtable[$ComputerName]['dnshostname']))" -ForegroundColor Red
 		# return the dns error
 		return @($Latency, $DnsMismatch)
 	}
 	# return the result of our ping
 	return @($Latency, $Status)
-}
-
-function Get-ComputerDomain {
-	# parameters
-	param (
-		[Parameter(Mandatory=$true)][hashtable]$ADHashtable,
-		[Parameter(Mandatory=$true)][string]$ComputerName
-	)
-	# check if our AD array is null
-	if ($null -eq $ADHashtable) {
-		# computer array is null, return false
-		return $null
-	}
-	# look in all our domains for the computer
-	foreach ($Domain in $ADHashtable.Keys) {
-		# check if the computer is in our current domain
-		if ($ADHashtable[$Domain] -match $ComputerName) {
-			# if the computer is in our array, return true
-			return $Domain
-		}
-	}
-}
-
-function Get-ComputerFQDN {
-	# parameters
-	param (
-		[Parameter(Mandatory=$true)][hashtable]$ADHashtable,
-		[Parameter(Mandatory=$true)][string]$ComputerName
-	)
-	# get our domain
-	$Domain = Get-ComputerDomain -ADHashtable $ADHashtable -ComputerName $ComputerName
-	# check if we got a domain
-	if (($null -eq $Domain) -or ($Domain -eq "")) {
-		# if we have no domain, return the computer name
-		$ComputerName
-	}
-	else {
-		# otherwise, return our fully qualified domain name
-		"$($ComputerName).$($Domain)"
-	}
 }
 
 #endregion FUNCTIONS
@@ -356,8 +298,18 @@ foreach ($IPath in $InputPath) {
 	# change our default settings for our remote session used by invoke-command
 	$PssOptions = New-PSSessionOption -MaxConnectionRetryCount 0 -OpenTimeout 30000 -OperationTimeout 30000
 
+	# create an array for our root ous
+	$Global:RootOU = @()
+	# convert our canonical names to distinguished names
+	foreach ($Root in $Global:ConfigRootOU) {
+		# add the converted name to our array
+		$Global:RootOU += (Convert-CanonicalToDistinguished -Path $Root)
+	}
+
+	# wite an update
+	Write-Host "Getting computers from AD using LDAP" -ForegroundColor DarkCyan
 	# get an array of AD computers
-	$ADComputerHashtable = Get-AdComputerHashtable -Domains $Global:ConfigDomains -Filter $Global:ConfigFilter
+	$ADComputerHashtable = Get-LDAPComputer -RootOU $Global:RootOU -Computers $Global:ConfigFilter -Properties 'dnshostname'
 
 	# loop through list of computers
 	foreach ($Computer in $ComputerList) {
@@ -373,7 +325,7 @@ foreach ($IPath in $InputPath) {
 			Write-Host "`n$($Computer): Trying To Connect" -ForegroundColor Yellow
 			# set our parameters for our invoke command
 			$Parameters = @{
-				ComputerName	= (Get-ComputerFQDN -ADHashtable $ADComputerHashtable -ComputerName $Computer)
+				ComputerName	= ($ADComputerHashtable[$Computer]['dnshostname'])
 				FilePath		= $PayloadFile
 				ErrorAction		= "SilentlyContinue"
 				SessionOption	= $PssOptions
