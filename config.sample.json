@@ -1,0 +1,4 @@
+{
+  "RootOU": ["CanonicalPathOne", "CanonicalPathTwo", "CanonicalPathEtc"],
+  "Filter": "HostNameFilter*"
+}
