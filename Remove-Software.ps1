@@ -41,7 +41,7 @@ function Get-ConfigFromJson {
 	if ((Test-Path -Path $Global:JsonConfigFileName) -eq $false)
 	{
 		# if we are unable to read the file, write an error message and exit
-		Write-Host "ERROR: JSON config file '$($Global:JsonConfigFileName)' not found." -ForegroundColor Red
+		Write-Host "Error: JSON config file '$($Global:JsonConfigFileName)' not found." -ForegroundColor Red
 		exit
 	}
 	# read our data from the json config file
@@ -50,7 +50,7 @@ function Get-ConfigFromJson {
 	# check if our hashtable is null
 	if ($null -eq $JsonConfigHashtable) {
 		# hashtable is null, exit
-		Write-Host "ERROR: No config data read from JSON file '$($Global:JsonConfigFileName)'." -ForegroundColor Red
+		Write-Host "Error: No config data read from JSON file '$($Global:JsonConfigFileName)'." -ForegroundColor Red
 		exit
 	}
 	# set our variable from the config file
@@ -74,7 +74,7 @@ function Test-ConfigValueNullOrEmpty {
 	# check if the value is null
 	if (($null -eq $Value) -or ($Value -eq "")) {
 		# if the value is null, write an error message and exit
-		Write-Host "ERROR: Config '$($Key)' value is null or empty." -ForegroundColor Red
+		Write-Host "Error: Config '$($Key)' value is null or empty." -ForegroundColor Red
 		exit
 	}
 	# otherwise, return the value
@@ -323,9 +323,22 @@ foreach ($IPath in $InputPath) {
 			$Status = "$ComputerCount/$TotalComputers Complete"
 			Write-Progress -Activity $Activity -Status $Status -PercentComplete $PComplete
 			Write-Host "`n$($Computer): Trying To Connect" -ForegroundColor Yellow
+			# try to get our dnshostname from our hashtable
+			try {
+				# get our dns hostname from our hashtable
+				$DnsHostname = $ADComputerHashtable[$Computer]['dnshostname']
+			}
+			catch {
+				# write our error
+				Write-Host "$($Computer): Unable to get DNS hostname from hashtable" -ForegroundColor Red
+				# add the computer to our error array if an error was caught
+				$ErrorArray += $Computer
+				# skip this computer
+				continue
+			}
 			# set our parameters for our invoke command
 			$Parameters = @{
-				ComputerName	= ($ADComputerHashtable[$Computer]['dnshostname'])
+				ComputerName	= $DnsHostname
 				FilePath		= $PayloadFile
 				ErrorAction		= "SilentlyContinue"
 				SessionOption	= $PssOptions
@@ -385,8 +398,7 @@ foreach ($IPath in $InputPath) {
 					$SuccessArray += $Computer
 				}
 				else {
-					Write-Host "Error: $($Computer)" -ForegroundColor Yellow
-					# if the script added an error, add the computer to our success array
+					# add the computer to our error array if an error was caught
 					$ErrorArray += $Computer
 				}
 			}
