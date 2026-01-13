@@ -131,7 +131,7 @@ function Remove-BingWallpaperInstaller {
 			# loop through all the files
 			foreach ($TempFile in $TempFilePaths) {
 				# check if the filename contains our the item we are looking for
-				if ($TempFile.Contains("BingWallpaperInstaller")) {
+				if ($TempFile.Contains("BingWallpaper")) {
 					# check if this is a file
 					if ((Test-Path -Path $TempFile -PathType Leaf) -eq $true) {
 						# delete the file
@@ -349,23 +349,6 @@ function Add-RegistryKey {
 	Set-ItemProperty -Path $Path -Name $KeyName -Value $Value -Type $KeyType | Out-Null
 }
 
-# add registry value to stop downloading manufacturers' apps for installed devices
-function Set-DisableAppsForDevices {
-	# the registry values
-	$RegPath = 'HKCU:\Software\Policies\Microsoft\Windows\DeviceInstall'
-	$RegKeyName = 'AllowOSManagedDriverInstallationToUI'
-	$RegKeyValue = 0
-	# add the key
-	Add-RegistryKey -Path $RegPath -KeyName $RegKeyName -Value $RegKeyValue -KeyType DWord
-
-	# the registry values
-	$RegPath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Device Installer'
-	$RegKeyName = 'DisableCoInstallers'
-	$RegKeyValue = 1
-	# add the key
-	Add-RegistryKey -Path $RegPath -KeyName $RegKeyName -Value $RegKeyValue -KeyType DWord
-}
-
 function Set-AppxLibrary {
 	Add-Type -AssemblyName "System.EnterpriseServices"
 	$publish = [System.EnterpriseServices.Internal.Publish]::new()
@@ -455,9 +438,6 @@ try {
 	Remove-AllFolders -Name "NO APP NAME"
 	Remove-BingWallpaperInstaller
 
-	# update the registry to try and stop Windows from downloading the extra software packages
-	Set-DisableAppsForDevices
-	
 	# run a hardware update cycle
 	if ($PSVersionTable.PSVersion.Major -lt 7) {
 		Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
