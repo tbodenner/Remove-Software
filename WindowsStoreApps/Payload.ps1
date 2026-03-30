@@ -1,4 +1,12 @@
 $ComputerName = $env:computername
+# return counts
+$Script:SkipCount = 0
+$Script:UninstallCount = 0
+$Script:ErrorCount = 0
+
+# file and folder counts
+$FoldersRemoved = 0
+$FilesRemoved = 0
 
 function Get-AllUserPackages {
 	try {
@@ -97,9 +105,13 @@ function Remove-PackageFolder {
 		Remove-Item -Path $FolderName -Recurse -Force -ErrorAction SilentlyContinue | Out-Null
 		if ($IsFolder -eq $true) {
 			Write-Host "$($ComputerName): -- Removed App Folder '$(Split-Path -Path $FolderName -Leaf)'"
+			# update our count
+			$FoldersRemoved += 1
 		}
 		else {
 			Write-Host "$($ComputerName): -- Removed App File '$(Split-Path -Path $FolderName -Leaf)'"
+			# update our count
+			$FilesRemoved += 1
 		}
 	}
 }
@@ -120,6 +132,8 @@ function Remove-BingWallpaperInstaller {
 			# if the file exists, then remove it
 			Remove-Item -Path $BingWallpaperInstallerFile -Force
 			Write-Host "$($ComputerName): -- Removed Bing Wallpaper download file '$($User)'"
+			# update our count
+			$FilesRemoved += 1
 		}
 
 		# get all files in user's temp folder
@@ -138,6 +152,8 @@ function Remove-BingWallpaperInstaller {
 						Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
 						Write-Host "$($ComputerName): -- Removed Bing Wallpaper file '$($User)'"
 						Write-Host "$($ComputerName): ---- File '$(Split-Path -Path $TempFile -Leaf)'"
+						# update our count
+						$FilesRemoved += 1
 					}
 					# check if this is a folder
 					if ((Test-Path -Path $TempFile -PathType Container) -eq $true) {
@@ -145,6 +161,8 @@ function Remove-BingWallpaperInstaller {
 						Remove-Item $TempFile -Force -Recurse -ErrorAction SilentlyContinue
 						Write-Host "$($ComputerName): -- Removed Bing Wallpaper folder '$($User)'"
 						Write-Host "$($ComputerName): ---- Folder '$(Split-Path -Path $TempFile -Leaf)'"
+						# update our count
+						$FoldersRemoved += 1
 					}
 				}
 			}
@@ -187,6 +205,7 @@ function Remove-AmdFolders {
 				}
 				catch {
 					Write-Host "$($ComputerName): -- Failed to stop or remove service '$($Serv)'"
+					$Script:ErrorCount += 1
 				}
 			}
 		}
@@ -203,9 +222,11 @@ function Remove-AmdFolders {
 				if ((Test-Path -Path $Path) -eq $True) {
 					if ($Path.Length -gt $MaxPathLen) {
 						Write-Host "$($ComputerName): -- Failed to remove folder '$(Split-Path -Path $Path -Leaf)'"
+						$Script:ErrorCount += 1
 					}
 					else {
 						Write-Host "$($ComputerName): -- Failed to remove folder '$($Path)'"
+						$Script:ErrorCount += 1
 					}
 					if ($Path -eq "C:\Program Files\AMD\") {
 						Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}\0000\' -Name 'DalDCELogFilePath' -ErrorAction SilentlyContinue
@@ -216,9 +237,13 @@ function Remove-AmdFolders {
 				else {
 					if ($Path.Length -gt $MaxPathLen) {
 						Write-Host "$($ComputerName): -- Removed folder '$(Split-Path -Path $Path -Leaf)'"
+						# update our count
+						$FoldersRemoved += 1
 					}
 					else {
 						Write-Host "$($ComputerName): -- Removed folder '$($Path)'"
+						# update our count
+						$FoldersRemoved += 1
 					}
 				}
 			}
@@ -227,6 +252,7 @@ function Remove-AmdFolders {
 	}
 	catch {
 		Write-Host "$($ComputerName): -- Error caught in Remove-AmdFolders"
+		$Script:ErrorCount += 1
 	}
 }
 
@@ -246,9 +272,11 @@ function Invoke-RemoveAppxPackage {
 	}
 	catch [TypeInitializationException]{
 		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. TypeInitializationException"
+		$Script:ErrorCount += 1
 	}
 	catch {
 		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. Unknown reason"
+		$Script:ErrorCount += 1
 	}
 }
 
@@ -261,7 +289,10 @@ function Remove-Package {
 	# if we get an empty name, don't do anything
 	if (($Null -eq $WindowsApp) -or ($Null -eq $WindowsApp.PackageName) -or ($WindowsApp.PackageName -eq '')) {
 		Write-Host "$($ComputerName): -- App name was null or empty"
-		return @(0, 0)
+		# update our skip count
+		$Script:SkipCount += 1
+		# return, nothing else to do
+		return
 	}
 
 	# if the package has any known services, stop them
@@ -277,7 +308,10 @@ function Remove-Package {
 	if ($Null -eq $Packages) {
 		Write-Host "$($ComputerName): -- Packages is NULL, removing folders"
 		Remove-AllFolders -Name $WindowsApp.PackageName
-		return @(0, 0)
+		# update our skip count
+		$Script:SkipCount += 1
+		# return, nothing else to do
+		return
 	}
 
 	# remove each instance of the installed package
@@ -290,8 +324,9 @@ function Remove-Package {
 				Write-Host "$($ComputerName): -- Pending Removal '$($Pkg.PackageFullName)'"
 				continue
 			}
+			# get the user SID
 			$UserSid = $User.UserSecurityId.Sid
-			# system user, skip it
+			# skip the system user
 			if ($UserSid -eq 'S-1-5-18') { continue }
 			# no package name, skip it
 			if ($Pkg.PackageFullName -eq '') { continue }
@@ -322,11 +357,36 @@ function Remove-Package {
 	$PackageResult = Get-InstalledPackage -Name $WindowsApp.PackageName -AllPackages $Global:AllPackages
 	if ($Null -eq $PackageResult) {
 		Write-Host "$($ComputerName): -- Verified '$($WindowsApp.PackageName)' was removed"
-		return @(0, 1)
+		# update our uninstalled count
+		$Script:UninstallCount += 1
 	}
 	else {
-		Write-Host "$($ComputerName): -- '$($WindowsApp.PackageName)' was NOT removed"
-		return @(0, 0)
+		# count our non-skipped users
+		$NonSystemUser = 0
+		# loop through our packages
+		foreach ($Pkg in $PackageResult) {
+			# get the user SID
+			$UserSid = $User.UserSecurityId.Sid
+			# check if this is a system user
+			if ($UserSid -eq 'S-1-5-18') {
+				# skip the system user
+				continue
+			}
+			else {
+				# update our count
+				$NonSystemUser += 1
+			}
+			# check if we had any non system users
+			if ($NonSystemUser -gt 0) {
+				# any other users will be considered an error
+				Write-Host "$($ComputerName): -- '$($WindowsApp.PackageName)' was NOT removed" -ForegroundColor Red
+				# update our error count
+				$Script:ErrorCount += 1
+			}
+			else {
+				Write-Host "$($ComputerName): -- Verified '$($WindowsApp.PackageName)' was removed"
+			}
+		}
 	}
 }
 
@@ -377,9 +437,6 @@ class WindowsApp {
 }
 
 try {
-	$SkipCount = 0
-	$UninstallCount = 0
-
 	Write-Host "$($ComputerName): Connected"
 
 	# services to stop for amd radeon
@@ -391,18 +448,14 @@ try {
 		'AMDRSSrcExt'
 	)
 
-	# create our windows app objects
-	$AmdWindowsApp = [WindowsApp]::new("AdvancedMicroDevicesInc", $AmdServices, @())
-	$DuckWindowsApp = [WindowsApp]::new("DuckDuckGo", @(), @())
-	$WavesWindowsApp = [WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
-	$BingWindowsApp = [WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
-
-	# add our apps to an array
+	# create and add our apps to an array
 	$WindowsAppsToRemove = @(
-		$AmdWindowsApp
-		$DuckWindowsApp
-		$WavesWindowsApp
-		$BingWindowsApp
+		# package name, services, processes
+		[WindowsApp]::new("AdvancedMicroDevicesInc", $AmdServices, @())
+		[WindowsApp]::new("DuckDuckGo", @(), @())
+		[WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
+		[WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
+		[WindowsApp]::new("Microsoft.ZuneMusic", @(), @())
 	)
 	
 	# apply a fix to get Appx working in remote sessions
@@ -420,14 +473,7 @@ try {
 				$Package = $Packages | Where-Object { $_.Name -like "$($WindowsAppData.PackageName)*" }
 				if ($Null -ne $Package) {
 					Write-Host "$($ComputerName): Uninstalling $($WindowsAppData.PackageName)"
-					$Result = Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
-					if ($Null -eq $Result) {
-						Write-Host "$($ComputerName): -- Null result for $($WindowsAppData.PackageName)"
-					}
-					else {
-						$SkipCount += $Result[0]
-						$UninstallCount += $Result[1]
-					}
+					Remove-Package -WindowsApp $WindowsAppData -Packages $Packages
 				}
 			}
 		}
@@ -438,21 +484,19 @@ try {
 	Remove-AllFolders -Name "NO APP NAME"
 	Remove-BingWallpaperInstaller
 
-	# run a hardware update cycle
-	if ($PSVersionTable.PSVersion.Major -lt 7) {
-		Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
-		Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
-	}
-	else {
-		Write-Host "$($ComputerName): Skipped Hardware Inventory Cycle due to PowerShell7 profile issue"
-	}
-	
+	# trigger a hardware update cycle
+	Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
+	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
+
 	# done, return our results
 	Write-Host "$($ComputerName): Done"
-	@($SkipCount, $UninstallCount)
 }
 catch {
 	Write-Host "$($ComputerName): -- Error caught in script. Check error file."
 	Write-Error -Message "$($ComputerName): $($_)"
-	$Null
+	# update our error count
+	$Script:ErrorCount += 1
 }
+
+# return an array of our counts
+@($Script:SkipCount, $Script:UninstallCount, $Script:ErrorCount)

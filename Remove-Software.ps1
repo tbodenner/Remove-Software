@@ -286,8 +286,9 @@ foreach ($IPath in $InputPath) {
 	# count variables
 	$TotalComputers = $ComputerList.Count
 	$ComputerCount = 0
-	$SkipCount = 0
-	$UninstallCount = 0
+	$Script:SkipCount = 0
+	$Script:UninstallCount = 0
+	$Script:ErrorCount = 0
 
 	# percent complete
 	$PComplete = 0.0
@@ -331,6 +332,8 @@ foreach ($IPath in $InputPath) {
 			catch {
 				# write our error
 				Write-Host "$($Computer): Unable to get DNS hostname from hashtable" -ForegroundColor Red
+				# update error count
+				$Script:ErrorCount += 1
 				# add the computer to our error array if an error was caught
 				$ErrorArray += $Computer
 				# skip this computer
@@ -361,16 +364,41 @@ foreach ($IPath in $InputPath) {
 					$InvokeReturn = Invoke-Command @Parameters
 					# check if we got anything back from the invoke command
 					if ($null -ne $InvokeReturn) {
-						# should be @($SkipCount, $UninstallCount)
-						# check if our skip count is an int
-						if ($InvokeReturn[0] -is [int]) {
-							# update our count
-							$SkipCount += $InvokeReturn[0]
+						# the returned array should be @(unnecessary PS object, skip count, uninstall count, error count)
+						if (($InvokeReturn -is [array]) -and ($InvokeReturn.Count -ge 4)) {
+							# get our skip count
+							if ($InvokeReturn[1] -is [int]) {
+								$ReturnedSkipCount = $InvokeReturn[1]
+							}
+							# get our uninstall count
+							if ($InvokeReturn[2] -is [int]) {
+								$ReturnedUninstallCount = $InvokeReturn[2]
+							}
+							# get our error count
+							if ($InvokeReturn[3] -is [int]) {
+								$ReturnedErrorCount = $InvokeReturn[3]
+							}
 						}
-						# check if our uninstall count is an int
-						if ($InvokeReturn[1] -is [int]) {
+
+						# check our returned count
+						if ($ReturnedSkipCount -gt 0) {
 							# update our count
-							$UninstallCount += $InvokeReturn[1]
+							$Script:SkipCount += 1
+						}
+						# check our returned count
+						if ($ReturnedUninstallCount -gt 0) {
+							# update our count
+							$Script:UninstallCount += 1
+						}
+						# check our returned count
+						if ($ReturnedErrorCount -gt 0) {
+							# update our count
+							$Script:ErrorCount += 1
+							# write an error since our payload had an error,
+							# and so this computer will not be counted as successful
+							Write-Error -Message "$($Computer): Payload error occurred" -Category NotSpecified -ErrorAction SilentlyContinue
+							# we got an error, add the computer to the error array
+							$ErrorArray += $Computer
 						}
 					}
 					else {
@@ -378,17 +406,23 @@ foreach ($IPath in $InputPath) {
 						$ErrorArray += $Computer
 						# write the error message
 						Write-Host "$($Computer) No return value from Payload script" -ForegroundColor Red
+						# update our count
+						$Script:ErrorCount += 1
 					}
 				}
 				else {
 					# otherwise, write an error
 					Write-Error -Message "$($Computer): DNS mismatch error" -Category ConnectionError -ErrorAction SilentlyContinue
+					# update our count
+					$Script:ErrorCount += 1
 				}
 			}
 			else {
 				Write-Host "$($Computer) Ping ($($PingStatus))" -ForegroundColor Red
 				# otherwise, write an error
 				Write-Error -Message "$($Computer): Unable to ping $($Computer) - ($($PingStatus), $($PingLatency))" -Category ConnectionError -ErrorAction SilentlyContinue
+				# update our count
+				$Script:ErrorCount += 1
 			}
 			# check if our computer is in AD before adding to either array
 			if ($PingStatus -ne $NotInAd) {
@@ -419,19 +453,20 @@ foreach ($IPath in $InputPath) {
 
 	# create our counts array to output to the console and a file
 	$CountsArray = @(
-		"`nResults:"
-		"    Total: $($TotalComputers)"
-		"  Success: $($SuccessArray.Count)"
-		"     Skip: $($SkipCount)"
-		"Uninstall: $($UninstallCount)"
-		"    Error: $($ErrorArray.Count)"
+		"`n Results:"
+		"     Total: $($TotalComputers)"
+		"   Success: $($SuccessArray.Count)"
+		"      Skip: $($Script:SkipCount)"
+		" Uninstall: $($Script:UninstallCount)"
+		"    Errors: $($Script:ErrorCount)"
+		"ErrorArray: $($ErrorArray.Count)"
 	)
 
 	# write our counts
 	Write-Host $CountsArray[0]
 	Write-Host $CountsArray[1] -ForegroundColor Yellow
 	Write-Host $CountsArray[2] -ForegroundColor Green
-	Write-Host $CountsArray[3] -ForegroundColor Cyan
+	Write-Host $CountsArray[3] -ForegroundColor DarkCyan
 	Write-Host $CountsArray[4] -ForegroundColor Blue
 	Write-Host $CountsArray[5] -ForegroundColor Red
 

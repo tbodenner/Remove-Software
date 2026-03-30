@@ -1,6 +1,7 @@
 $ComputerName = $env:computername
 $SkipCount = 0
 $UninstallCount = 0
+$ErrorCount = 0
 
 try {
 	$ProductName = "Xerox Desktop Print Experience"
@@ -40,6 +41,7 @@ try {
 				$ErrString = "$($ComputerName): Failed To Uninstall '$($ProductName) v$($UninstallCurrentVersion)'"
 				Write-Host "$($ComputerName): $($ErrString)"
 				Write-Error $ErrString
+				$ErrorCount += 1
 			}
 			else {
 				# software was removed
@@ -65,7 +67,9 @@ catch {
 	Write-Host "$($ComputerName): Error in script"
 	Write-Host "$($ComputerName): $($_)"
 	Write-Error $_
+	# an error was caught, update our error count
+	$ErrorCount += 1
 }
 
 # return an array of our counts
-return @($SkipCount, $UninstallCount)
+@($SkipCount, $UninstallCount, $ErrorCount)

@@ -5,6 +5,15 @@ $RunningUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name.Sp
 # get the running user's profile folder acl
 $AdminAcl = Get-Acl -Path "C:\Users\$($RunningUser)"
 
+# return counts
+$SkipCount = 0
+$UninstallCount = 0
+$ErrorCount = 0
+
+# file and folder counts
+$FoldersRemoved = 0
+$FilesRemoved = 0
+
 try {
 	Write-Host "$($ComputerName): Connected"
 	
@@ -91,12 +100,16 @@ try {
 					# if the path exists, then remove the folder
 					Remove-Item -Path $ResolvedPath -Recurse -Force
 					Write-Host "$($ComputerName): -- Removed folder '$(Split-Path -Path $ResolvedPath -Leaf)' for '$($User)'"
+					# update our count
+					$FoldersRemoved += 1
 				}
 				# check if this is a file and it exists
 				if ((Test-Path -Path $ResolvedPath -PathType Leaf) -eq $True) {
 					# if the path exists, then remove the file
 					Remove-Item -Path $ResolvedPath -Force
 					Write-Host "$($ComputerName): -- Removed file '$(Split-Path -Path $ResolvedPath -Leaf)' for '$($User)'"
+					# update our count
+					$FilesRemoved += 1
 				}
 			}
 		}
@@ -132,6 +145,16 @@ try {
 		#>
 	}
 	
+	# check if any files or folders were removed
+	if (($FilesRemoved -gt 0) -or ($FoldersRemoved -gt 0)) {
+		# changes were made, so update our uninstall count
+		$UninstallCount += 1
+	}
+	else {
+		# nothing was done, update our skip count
+		$SkipCount += 1
+	}
+
 	# trigger sccm scan
 	Write-Host "$($ComputerName): Triggering Hardware Inventory Cycle"
 	Invoke-WmiMethod -Namespace 'root\ccm' -Class 'sms_client' -Name 'TriggerSchedule' -ArgumentList '{00000000-0000-0000-0000-000000000001}'
@@ -142,4 +165,9 @@ catch {
 	Write-Host "$($ComputerName): Error in script"
 	Write-Host "$($ComputerName): $($_)"
 	Write-Error $_
+	# an error was caught, update our error count
+	$ErrorCount += 1
 }
+
+# return an array of our counts
+@($SkipCount, $UninstallCount, $ErrorCount)
