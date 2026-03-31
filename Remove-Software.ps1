@@ -304,7 +304,7 @@ foreach ($IPath in $InputPath) {
 	# convert our canonical names to distinguished names
 	foreach ($Root in $Global:ConfigRootOU) {
 		# add the converted name to our array
-		$Global:RootOU += (Convert-CanonicalToDistinguished -Path $Root)
+		$Global:RootOU += Convert-CanonicalToDistinguished -Path $Root
 	}
 
 	# wite an update
