@@ -15,13 +15,13 @@ function Get-AllUserPackages {
 	}
 	catch [TypeInitializationException] {
 		# type initialization error
-		Write-Host "$($ComputerName): -- Get-AppxPackage failed. TypeInitializationException"
+		Write-Host "$($ComputerName): -- Get-AppxPackage failed. TypeInitializationException" -ForegroundColor Red
 		# return null
 		$Null
 	}
 	catch {
 		# all other errors
-		Write-Host "$($ComputerName): -- Get-AppxPackage failed. Unknown reason."
+		Write-Host "$($ComputerName): -- Get-AppxPackage failed. Unknown reason." -ForegroundColor Red
 		# return null
 		$Null
 	}
@@ -185,7 +185,7 @@ function Remove-AmdFolders {
 					Write-Host "$($ComputerName): -- Stopped process '$($Proc)'"
 				}
 				catch {
-					Write-Host "$($ComputerName): -- Failed to stop process '$($Proc)'"
+					Write-Host "$($ComputerName): -- Failed to stop process '$($Proc)'" -ForegroundColor Red
 				}
 			}
 		}
@@ -204,7 +204,7 @@ function Remove-AmdFolders {
 					Write-Host "$($ComputerName): -- Removed service '$($Serv)'"
 				}
 				catch {
-					Write-Host "$($ComputerName): -- Failed to stop or remove service '$($Serv)'"
+					Write-Host "$($ComputerName): -- Failed to stop or remove service '$($Serv)'" -ForegroundColor Red
 					$Script:ErrorCount += 1
 				}
 			}
@@ -251,7 +251,7 @@ function Remove-AmdFolders {
 		}
 	}
 	catch {
-		Write-Host "$($ComputerName): -- Error caught in Remove-AmdFolders"
+		Write-Host "$($ComputerName): -- Error caught in Remove-AmdFolders" -ForegroundColor Red
 		$Script:ErrorCount += 1
 	}
 }
@@ -271,11 +271,11 @@ function Invoke-RemoveAppxPackage {
 		}
 	}
 	catch [TypeInitializationException]{
-		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. TypeInitializationException"
+		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. TypeInitializationException" -ForegroundColor Red
 		$Script:ErrorCount += 1
 	}
 	catch {
-		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. Unknown reason"
+		Write-Host "$($ComputerName): -- Remove-AppxPackage failed. Unknown reason" -ForegroundColor Red
 		$Script:ErrorCount += 1
 	}
 }
@@ -455,7 +455,8 @@ try {
 		[WindowsApp]::new("DuckDuckGo", @(), @())
 		[WindowsApp]::new("WavesAudio", @('Waves Audio Services'), @())
 		[WindowsApp]::new("Microsoft.BingWallpaper", @(), @('BingWallpaper'))
-		[WindowsApp]::new("Microsoft.ZuneMusic", @(), @())
+		[WindowsApp]::new("Microsoft.ZuneMusic", @(), @()),
+		[WindowsApp]::new("SpotifyAB.SpotifyMusic", @(), @())
 	)
 	
 	# apply a fix to get Appx working in remote sessions
@@ -492,7 +493,7 @@ try {
 	Write-Host "$($ComputerName): Done"
 }
 catch {
-	Write-Host "$($ComputerName): -- Error caught in script. Check error file."
+	Write-Host "$($ComputerName): -- Error caught in script. Check error file." -ForegroundColor Red
 	Write-Error -Message "$($ComputerName): $($_)"
 	# update our error count
 	$Script:ErrorCount += 1
